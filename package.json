@@ -1,0 +1,52 @@
+{
+  "name": "vitepress-plugin-doc-review",
+  "version": "0.1.0",
+  "description": "PR-style review comments on a VitePress docs site in dev mode, posted to the GitHub pull request of the current branch.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --exclude test/build.test.ts",
+    "test:build": "vitest run test/build.test.ts",
+    "test:e2e": "node scripts/e2e-dry-run.mjs",
+    "docs:dev": "vitepress dev docs",
+    "docs:dev:dry": "DOC_REVIEW_DRY_RUN=1 vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "keywords": [
+    "vitepress",
+    "vitepress-plugin",
+    "review",
+    "github",
+    "pull-request"
+  ],
+  "peerDependencies": {
+    "vitepress": "^1.0.0",
+    "vue": "^3.3.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2",
+    "vitepress": "^1.6.4",
+    "vitest": "^5.0.3",
+    "vue": "^3.5.43"
+  }
+}

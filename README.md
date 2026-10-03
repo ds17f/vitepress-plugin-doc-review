@@ -1,0 +1,205 @@
+# vitepress-plugin-doc-review
+
+This plugin adds a review mode to a VitePress site. The review mode works the
+same as a line comment in a GitHub pull request (PR) review. It operates only
+when the VitePress dev server runs.
+
+A reviewer opens a page on the dev server and selects text. The reviewer
+writes a comment on the text. The comments collect in a pending review. At
+submit, the plugin sends all of the comments to the open PR of the current git
+branch as one GitHub review. Each comment is on the correct file and line, so
+it shows in the "Files changed" tab of the PR.
+
+The full documentation is a VitePress site in `docs/`. The site also uses the
+plugin, so you can use it to test the plugin. See
+[Run the docs site](#run-the-docs-site).
+
+## Requirements
+
+| Item | Why the plugin needs it |
+| --- | --- |
+| VitePress 1.x and Vue 3 | These are peer dependencies. |
+| Node.js 18 or later | The dev server and the build run on Node.js. |
+| The GitHub CLI (`gh`) | The dev server uses `gh` to get the PR and to send the review. Get it from <https://cli.github.com>. |
+| A `gh` login | Run `gh auth login` one time. The dev server uses this login. |
+| A git repository on GitHub | The docs must be in the repository. The docs directory can be at any depth. |
+| An open PR for the current branch | The review goes to this PR. |
+
+The plugin has no other runtime dependencies.
+
+## Install
+
+Install the package as a development dependency:
+
+```sh
+npm install --save-dev vitepress-plugin-doc-review
+```
+
+## Add the plugin to a site
+
+You must change 2 files.
+
+In `.vitepress/config.mts`, wrap the config in `withReview`:
+
+```ts
+import { defineConfig } from 'vitepress'
+import { withReview } from 'vitepress-plugin-doc-review'
+
+export default withReview(defineConfig({ title: 'My docs' }), { dryRun: false })
+```
+
+In `.vitepress/theme/index.ts`, wrap the theme in `withReviewTheme`:
+
+```ts
+import DefaultTheme from 'vitepress/theme'
+import { withReviewTheme } from 'vitepress-plugin-doc-review/client'
+
+export default withReviewTheme(DefaultTheme)
+```
+
+For a custom theme, wrap your theme object in the same way. If your theme has
+its own `enhanceApp`, you can call `enhanceAppWithReview(ctx)` in it instead.
+
+## Options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | Set to `false` to turn off the plugin. |
+| `dryRun` | `boolean` | `false` | Write the review payload in the dev server terminal. Do not send it to GitHub. |
+| `repo` | `string` | Detected with `gh repo view` | The GitHub repository as `owner/name`. |
+
+## How it works
+
+The plugin has 3 parts.
+
+### 1. The markdown rule
+
+A markdown-it rule adds these attributes to each block element in the HTML:
+
+- `data-source-file`: the path of the .md file, relative to the root of the
+  git repository.
+- `data-source-line` and `data-source-end`: the first line and the last line
+  of the block in the .md file.
+
+VitePress removes the frontmatter before markdown-it reads the page. The rule
+adds the length of the frontmatter to each line number. Thus a line number in
+the HTML is the same line in the .md file.
+
+Vue changes each line break in a paragraph to a space. Thus the rule puts an
+empty `<wbr data-source-br>` element at each line break. The UI counts these
+elements to find the exact line of a selection in a paragraph.
+
+The rule operates only when the dev server runs.
+
+### 2. The review UI
+
+The review UI is a Vue app. It shows:
+
+- A **Comment** button when you select text. A selection over 2 or more
+  blocks gives a comment on a range of lines.
+- A **Review** button at the bottom right. It opens the pending review panel.
+  In the panel, you can edit or delete each comment, write a summary, and
+  select **Comment**, **Approve**, or **Request changes**.
+- A gray bar on the left of each block that is not in the PR diff.
+
+The UI keeps the draft in `localStorage`, so a page reload does not delete the
+comments. The styles use the VitePress CSS variables, so the UI works in the
+light theme and in the dark theme.
+
+The UI code is behind `import.meta.env.DEV`. A production build does not
+contain it.
+
+### 3. The server endpoints
+
+A Vite plugin with `apply: 'serve'` adds 2 endpoints to the dev server:
+
+- `GET /__review/pr` gets the PR of the current branch with `gh pr view`. It
+  gets the lines that you can comment on from the patches in
+  `gh api repos/{owner}/{repo}/pulls/{n}/files`. It also does the local
+  checks.
+- `POST /__review/submit` does the checks again. Then it sends the review to
+  `repos/{owner}/{repo}/pulls/{n}/reviews` with `gh api`.
+
+The server runs `gh` with `execFile` and an argument array. It does not use a
+shell. It sends the review JSON on stdin with `--input -`.
+
+## Limits
+
+- **Only lines in the diff.** GitHub accepts a comment only on a line in the
+  PR diff. The plugin puts a comment on another line in the review body as
+  `path:line: comment`. It does not drop the comment.
+- **Dev mode only.** The review mode does not operate in a production build or
+  in `vitepress preview`.
+- **Local state must agree with the PR.** If your local HEAD is not the head
+  of the PR, or a docs file has changes that you did not push, the line
+  numbers can be incorrect. The UI shows a warning and blocks the submit.
+- **Includes and dynamic routes.** On a page that uses `<!--@include: -->` or
+  a dynamic route, the plugin turns off comments.
+- **Raw HTML and Vue components** in the markdown do not get source lines.
+- **Problems with `gh`.** If `gh` is not installed, has no login, or finds no
+  PR, the UI shows the problem. The comments stay as a local draft.
+
+## Security model
+
+- **No tokens.** The package, the site, and the browser do not contain a
+  token. The dev server uses the `gh` login of the person who starts it.
+- **Only the dev server can send requests.** The server refuses a request if
+  the `Origin` header or the `Host` header is not the dev server. It also
+  refuses a request without the `X-Doc-Review: 1` header. Thus other websites
+  in the browser cannot post reviews, and DNS rebinding attacks do not work.
+- **No shell.** Text from the browser never goes into a command line.
+- **Input checks.** The server checks each path and line. At submit, it gets
+  the PR and the local state again.
+- **Network access.** If you start the dev server with `--host`, other
+  computers on the network can submit a review with your `gh` login. Use
+  `--host` only on a network that you trust.
+
+## Run the docs site
+
+The `docs/` directory has the documentation of the plugin. The site uses the
+plugin from `src/`, so it needs no build step.
+
+```sh
+npm install
+npm run docs:dev        # the docs site with the review UI
+npm run docs:dev:dry    # the docs site in dry-run mode: no requests to GitHub
+npm run docs:build      # a production build of the docs site
+npm run docs:preview    # serve the production build
+```
+
+The pages in `docs/testing/` are fixtures for the tests. Do not change their
+text, because the automated tests use it. The other pages are real content.
+
+## Test the plugin
+
+```sh
+npm test               # unit tests
+npm run test:build     # build the docs site and make sure it has no review code
+npm run test:e2e       # dry-run test in headless Chromium
+npm run typecheck      # TypeScript check
+npm run build          # compile the package to dist/
+```
+
+The unit tests check the line of each block on each page of the docs site.
+They also check the diff parser, the review payload, the request checks, and
+the `gh` calls with a fake `gh`.
+
+The end-to-end test starts the docs site in dry-run mode. It selects text on
+the fixture pages, submits, and reads the payload from the server output. It
+makes sure that each `path` and `line` points to the selected text. It needs
+Chromium. Set `CHROME_PATH`, or install a browser in the Playwright cache.
+
+To do the first test with a real PR, read `docs/testing/index.md`.
+
+## Use make
+
+The `Makefile` has targets for the same tasks. Run `make help` to see all of
+the targets. For example:
+
+```sh
+make check   # TypeScript check and unit tests
+make ci      # all checks, the build, and all tests
+make dev     # the docs site with the review UI
+```
+
+Each target installs the dependencies first if `package-lock.json` changed.
