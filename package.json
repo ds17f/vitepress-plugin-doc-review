@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "prepack": "npm run build",
+    "prepare": "npm run build",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run --exclude test/build.test.ts",
     "test:build": "vitest run test/build.test.ts",
