@@ -32,8 +32,10 @@ In dry-run mode, the server writes the review payload in the dev server
 terminal. It does not send the review to GitHub. The panel also shows the
 payload.
 
-If no PR is available in dry-run mode, the plugin uses all lines as lines in
-the diff. Thus you can examine the payload before you open a PR.
+If the branch has no open PR, the dry run writes the issue payload. If the
+plugin cannot find the GitHub repository, the dry run writes a review payload.
+It uses all lines as lines in the diff. Thus you can examine the payload before
+you open a PR.
 
 You can set the option from an environment variable:
 

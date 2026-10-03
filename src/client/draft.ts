@@ -5,6 +5,8 @@ export interface Draft {
   /** Branch where the reviewer started the draft. */
   branch: string | null
   summary: string
+  /** Issue title. Used only when the branch has no open PR. */
+  title: string
   event: ReviewEvent
   comments: DraftComment[]
 }
@@ -12,7 +14,7 @@ export interface Draft {
 const KEY = 'vitepress-doc-review:draft'
 
 export function emptyDraft(): Draft {
-  return { version: 1, branch: null, summary: '', event: 'COMMENT', comments: [] }
+  return { version: 1, branch: null, summary: '', title: '', event: 'COMMENT', comments: [] }
 }
 
 export function loadDraft(): Draft {
@@ -29,7 +31,7 @@ export function loadDraft(): Draft {
 
 export function saveDraft(d: Draft): void {
   try {
-    if (!d.comments.length && !d.summary.trim()) localStorage.removeItem(KEY)
+    if (!d.comments.length && !d.summary.trim() && !d.title.trim()) localStorage.removeItem(KEY)
     else localStorage.setItem(KEY, JSON.stringify(d))
   } catch {}
 }

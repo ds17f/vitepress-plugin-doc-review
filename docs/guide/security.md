@@ -46,6 +46,6 @@ the data from the browser.
 
 ::: danger
 If you start the dev server with `--host`, other computers on the network can
-open the site. They can then submit a review with your `gh` login. Use
+open the site. They can then submit a review or open an issue with your `gh` login. Use
 `--host` only on a network that you trust.
 :::

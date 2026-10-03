@@ -27,6 +27,8 @@ export interface DraftComment {
 export interface SubmitRequest {
   event: ReviewEvent
   body: string
+  /** Issue title. Used only in issue mode. */
+  title?: string
   comments: DraftComment[]
 }
 
@@ -44,7 +46,7 @@ export interface Problem {
 }
 
 export interface Warning {
-  code: 'head-mismatch' | 'dirty-docs' | 'no-head'
+  code: 'head-mismatch' | 'dirty-docs' | 'no-head' | 'not-pushed'
   message: string
 }
 
@@ -54,13 +56,22 @@ export interface PrInfo {
   headRefOid: string
 }
 
+/**
+ * Where a submit goes:
+ * - `review`: a review on the open PR of the current branch.
+ * - `issue`: a new issue in the repository, because the branch has no open PR.
+ */
+export type SubmitMode = 'review' | 'issue'
+
 /** Response of `GET /__review/pr`. */
 export interface PrStatus {
   dryRun: boolean
+  mode: SubmitMode
   repo: string | null
   branch: string | null
   pr: PrInfo | null
   commentable: Commentable
+  /** In review mode, warnings block the submit. In issue mode, they are only information. */
   warnings: Warning[]
   problem: Problem | null
   /** True when the reviewer can submit now. */
@@ -83,11 +94,17 @@ export interface GitHubReviewPayload {
   comments: GitHubReviewComment[]
 }
 
+export interface GitHubIssuePayload {
+  title: string
+  body: string
+}
+
 /** Response of `POST /__review/submit`. */
 export interface SubmitResponse {
   ok: boolean
   dryRun?: boolean
-  payload?: GitHubReviewPayload
+  mode?: SubmitMode
+  payload?: GitHubReviewPayload | GitHubIssuePayload
   /** Number of comments that went into the review body because they are outside the diff. */
   outsideDiff?: number
   url?: string

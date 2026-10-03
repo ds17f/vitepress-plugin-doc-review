@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { ViteDevServer } from 'vite'
-import { buildReviewPayload, ReviewInputError } from './payload.js'
-import { loadContext, postReview, type ContextOptions } from './github.js'
+import { buildIssuePayload, buildReviewPayload, ReviewInputError } from './payload.js'
+import { loadContext, postIssue, postReview, type ContextOptions, type ReviewContext } from './github.js'
 import type { SubmitRequest, SubmitResponse } from '../shared/types.js'
 
 const MAX_BODY = 1024 * 1024
@@ -142,12 +142,13 @@ async function submit(input: SubmitRequest, opts: MiddlewareOptions): Promise<Su
   if (!input || typeof input !== 'object') throw new ReviewInputError('The request must be an object.')
   // Check the state again on the server. Do not trust the browser.
   const ctx = await loadContext(opts.context())
-  if (!ctx.canSubmit || !ctx.commitId) {
+  if (!ctx.canSubmit || (ctx.mode === 'review' && !ctx.commitId)) {
     const why = ctx.problem?.message ?? (ctx.warnings.map((w) => w.message).join(' ') || 'Cannot submit now.')
     return { ok: false, error: { code: ctx.problem?.code ?? 'blocked', message: why } }
   }
+  if (ctx.mode === 'issue') return submitIssue(input, ctx, opts)
   const { payload, outside } = buildReviewPayload({
-    commitId: ctx.commitId,
+    commitId: ctx.commitId!,
     event: input.event,
     body: input.body ?? '',
     comments: input.comments,
@@ -157,10 +158,30 @@ async function submit(input: SubmitRequest, opts: MiddlewareOptions): Promise<Su
   if (ctx.dryRun) {
     const target = ctx.pr ? `${ctx.repo}#${ctx.pr.number}` : `${ctx.repo ?? '(no repo)'} (no PR found)`
     opts.log(`DRY RUN: review for ${target}. Not sent to GitHub.\nPOST repos/${ctx.repo ?? '{owner}/{repo}'}/pulls/${ctx.pr?.number ?? '{n}'}/reviews\n${JSON.stringify(payload, null, 2)}`)
-    return { ok: true, dryRun: true, payload, outsideDiff: outside.length }
+    return { ok: true, dryRun: true, mode: 'review', payload, outsideDiff: outside.length }
   }
 
   const { url } = await postReview(opts.context().gitRoot!, ctx.repo!, ctx.pr!.number, payload)
   opts.log(`posted review to ${ctx.repo}#${ctx.pr!.number}: ${url ?? ''}`)
-  return { ok: true, dryRun: false, url, outsideDiff: outside.length }
+  return { ok: true, dryRun: false, mode: 'review', url, outsideDiff: outside.length }
+}
+
+/** No open PR for the branch: put all comments in one new issue. */
+async function submitIssue(input: SubmitRequest, ctx: ReviewContext, opts: MiddlewareOptions): Promise<SubmitResponse> {
+  const repo = ctx.repo!
+  const payload = buildIssuePayload({
+    repo,
+    title: input.title ?? '',
+    body: input.body ?? '',
+    comments: input.comments,
+    branch: ctx.branch,
+    linkCommit: ctx.linkCommit
+  })
+  if (ctx.dryRun) {
+    opts.log(`DRY RUN: issue for ${repo} (no open PR for this branch). Not sent to GitHub.\nPOST repos/${repo}/issues\n${JSON.stringify(payload, null, 2)}`)
+    return { ok: true, dryRun: true, mode: 'issue', payload }
+  }
+  const { url } = await postIssue(opts.context().gitRoot!, repo, payload)
+  opts.log(`opened issue in ${repo}: ${url ?? ''}`)
+  return { ok: true, dryRun: false, mode: 'issue', url }
 }

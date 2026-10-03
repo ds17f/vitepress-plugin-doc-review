@@ -49,3 +49,26 @@ deletes the pending review.
 If the panel shows a warning, the line numbers can be incorrect. The plugin
 blocks the submit. Correct the problem, then click **Reload PR**.
 :::
+
+## Submit without an open PR
+
+If the current branch has no open PR, the panel shows a tip. The submit then
+opens one GitHub issue with all of the comments. The plugin also does this if
+the PR is closed or merged.
+
+1. Write a title in **Issue title**. If you do not write a title, the title is
+   `Docs review: <branch>`.
+2. Write a summary. The summary is optional.
+3. Click **Open issue**.
+
+When GitHub accepts the issue, the panel shows a link to it. Then the plugin
+deletes the pending review.
+
+The issue has the comments in file and line order. If HEAD is on a remote
+branch, each file and line is a link to those lines at that commit.
+
+::: tip
+If you did not push HEAD, the issue has no links to the lines. The panel shows
+a warning, but you can submit. Push your branch, then click **Reload PR**, to
+add the links.
+:::

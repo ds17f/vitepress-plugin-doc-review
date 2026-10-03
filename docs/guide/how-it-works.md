@@ -89,3 +89,14 @@ does these checks:
 - The docs directory must have no .md changes that you did not commit.
 
 If a check fails, the server blocks the submit.
+
+### No open PR
+
+If the branch has no open PR, the server uses issue mode. Then no line is
+outside the diff, because there is no diff. At submit, the server puts all of
+the comments in one issue. It sends the issue to
+`repos/{owner}/{repo}/issues` with `gh api`.
+
+The server runs `git branch -r --contains HEAD`. If a remote branch contains
+HEAD, the issue has links to the lines at HEAD. In issue mode, the local
+checks show warnings, but they do not block the submit.

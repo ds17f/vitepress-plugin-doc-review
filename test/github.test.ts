@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { loadContext, postReview } from '../src/node/github.js'
+import { loadContext, postIssue, postReview } from '../src/node/github.js'
 
 // A fake `gh` on PATH. It answers the calls that the plugin makes and logs
 // its arguments and stdin, so no request goes to GitHub.
@@ -13,7 +13,8 @@ const args = process.argv.slice(2)
 const log = (entry) => fs.appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify(entry) + '\\n')
 const out = (v) => process.stdout.write(typeof v === 'string' ? v : JSON.stringify(v))
 if (args[0] === 'repo' && args[1] === 'view') out('octo/docs\\n')
-else if (args[0] === 'pr' && args[1] === 'view') out({ number: 7, url: 'https://github.com/octo/docs/pull/7', headRefOid: process.env.FAKE_HEAD, state: 'OPEN' })
+else if (args[0] === 'pr' && args[1] === 'view' && process.env.FAKE_NO_PR) { process.stderr.write('no pull requests found for branch "feature"'); process.exit(1) }
+else if (args[0] === 'pr' && args[1] === 'view') out({ number: 7, url: 'https://github.com/octo/docs/pull/7', headRefOid: process.env.FAKE_HEAD, state: process.env.FAKE_PR_STATE || 'OPEN' })
 else if (args[0] === 'api' && args[1] === 'repos/octo/docs/pulls/7/files') out([[{ filename: 'docs/a.md', status: 'modified', patch: '@@ -1,2 +1,3 @@\\n # A\\n+new\\n text' }]])
 else if (args[0] === 'api' && args.includes('POST')) {
   let input = ''
@@ -98,6 +99,68 @@ describe('loadContext with a fake gh', () => {
       git('checkout', '--', 'docs/a.md')
       fs.rmSync(path.join(dir, 'docs/new.md'))
     }
+  })
+})
+
+describe('loadContext without an open PR', () => {
+  const withEnv = async <T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> => {
+    Object.assign(process.env, env)
+    try {
+      return await fn()
+    } finally {
+      for (const k of Object.keys(env)) delete process.env[k]
+    }
+  }
+
+  it('switches to issue mode when the branch has no PR', async () => {
+    const ctx = await withEnv({ FAKE_NO_PR: '1' }, () => loadContext(opts()))
+    expect(ctx.mode).toBe('issue')
+    expect(ctx.problem).toBeNull()
+    expect(ctx.pr).toBeNull()
+    expect(ctx.commentable).toBeNull()
+    expect(ctx.canSubmit).toBe(true)
+    // The test repository has no remote, so HEAD is not pushed and the issue has no links.
+    expect(ctx.linkCommit).toBeNull()
+    expect(ctx.warnings.map((w) => w.code)).toEqual(['not-pushed'])
+  })
+
+  it('switches to issue mode when the PR is closed', async () => {
+    const ctx = await withEnv({ FAKE_PR_STATE: 'MERGED', FAKE_HEAD: head }, () => loadContext(opts()))
+    expect(ctx.mode).toBe('issue')
+    expect(ctx.canSubmit).toBe(true)
+  })
+
+  it('links to HEAD when it is on a remote branch', async () => {
+    git('update-ref', 'refs/remotes/origin/feature', head)
+    try {
+      const ctx = await withEnv({ FAKE_NO_PR: '1' }, () => loadContext(opts()))
+      expect(ctx.linkCommit).toBe(head)
+      expect(ctx.warnings).toEqual([])
+    } finally {
+      git('update-ref', '-d', 'refs/remotes/origin/feature')
+    }
+  })
+
+  it('does not block the submit for changes that are not committed', async () => {
+    fs.appendFileSync(path.join(dir, 'docs/a.md'), 'more\n')
+    try {
+      const ctx = await withEnv({ FAKE_NO_PR: '1' }, () => loadContext(opts()))
+      expect(ctx.warnings.map((w) => w.code)).toEqual(['not-pushed', 'dirty-docs'])
+      expect(ctx.canSubmit).toBe(true)
+    } finally {
+      git('checkout', '--', 'docs/a.md')
+    }
+  })
+})
+
+describe('postIssue with a fake gh', () => {
+  it('sends the issue on stdin', async () => {
+    fs.rmSync(logFile, { force: true })
+    const payload = { title: 'Docs review: feature', body: "Body with $(subshell) and 'quotes'" }
+    await postIssue(dir, 'octo/docs', payload)
+    const entry = JSON.parse(fs.readFileSync(logFile, 'utf8').trim())
+    expect(entry.args).toEqual(['api', '--method', 'POST', 'repos/octo/docs/issues', '--input', '-'])
+    expect(JSON.parse(entry.input)).toEqual(payload)
   })
 })
 

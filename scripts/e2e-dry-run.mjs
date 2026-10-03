@@ -207,6 +207,8 @@ await evaluate(`document.querySelector('.dr-toggle').click()`)
 await waitFor(`!!document.querySelector('.dr-panel')`)
 await evaluate(`(() => { const t = document.querySelector('.dr-panel > textarea'); t.value = 'Dry-run summary'; t.dispatchEvent(new Event('input')) })()`)
 await sleep(100)
+// The status loads with gh calls after the reload. Wait until submit is possible.
+await waitFor(`!([...document.querySelectorAll('.dr-panel .dr-btn.primary')].pop()?.disabled ?? true)`, 15000)
 const logStart = serverLog.length
 await evaluate(`[...document.querySelectorAll('.dr-panel .dr-btn.primary')].pop().click()`)
 await waitFor(`!!document.querySelector('.dr-panel .dr-pre') || !!document.querySelector('.dr-panel .dr-note.danger')`)
@@ -216,12 +218,25 @@ await sleep(300)
 const out = serverLog.slice(logStart)
 const json = out.slice(out.indexOf('\n{') + 1, out.lastIndexOf('}') + 1)
 const payload = JSON.parse(json)
+// Without an open PR, the submit makes an issue. Read the comments back from its body.
+const loggedComments = payload.comments ?? issueComments(payload.body)
+console.log(`Mode: ${payload.comments ? 'review' : 'issue'}`)
+
+function issueComments(body) {
+  return body.split('\n### ').slice(1).map((section) => {
+    const [heading, ...rest] = section.split('\n')
+    const m = /^\[?([^:\]]+):(\d+)(?:-(\d+))?/.exec(heading)
+    const text = rest.join('\n').split('\n\n---\n\n')[0].trim()
+    if (!m) return { path: heading, line: 0, body: text }
+    return m[3] ? { path: m[1], start_line: Number(m[2]), line: Number(m[3]), body: text } : { path: m[1], line: Number(m[2]), body: text }
+  })
+}
 
 let failed = (count === cases.length ? 0 : 1) + (includeOk ? 0 : 1)
 console.log(`${count === cases.length ? 'PASS' : 'FAIL'} draft kept after reload: ${count} comments`)
 console.log(`${includeOk ? 'PASS' : 'FAIL'} comments are off on the include page: ${offText}`)
 for (const [i, c] of cases.entries()) {
-  const got = payload.comments.find((x) => x.body.endsWith(`c${i}`))
+  const got = loggedComments.find((x) => x.body.endsWith(`c${i}`))
   const ok = got && got.path === c.file && got.line === c.line && got.start_line === c.startLine
   if (!ok) failed++
   const fmt = (p, s, l) => `${p}:${s ? s + '-' : ''}${l}`

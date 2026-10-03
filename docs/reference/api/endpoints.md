@@ -12,6 +12,8 @@ the request checks.
 ## GET /__review/pr
 
 Gets the PR of the current branch and the lines that you can comment on.
+If the branch has no open PR, `mode` is `issue`. Then the submit opens an
+issue.
 
 The server runs these commands:
 
@@ -20,6 +22,7 @@ gh repo view --json nameWithOwner
 gh pr view --json number,url,headRefOid,state
 gh api repos/{owner}/{repo}/pulls/{n}/files --paginate --slurp
 git rev-parse HEAD
+git branch -r --contains HEAD   # issue mode only
 git status --porcelain -- <docs directory>
 ```
 
@@ -28,6 +31,7 @@ Example response:
 ```json
 {
   "dryRun": false,
+  "mode": "review",
   "repo": "octo/docs",
   "branch": "update-guide",
   "pr": { "number": 42, "url": "https://github.com/octo/docs/pull/42", "headRefOid": "3f2c..." },
@@ -38,14 +42,17 @@ Example response:
 }
 ```
 
-`commentable` is `null` in dry-run mode when no PR is available. Then all
-lines are commentable.
+`commentable` is `null` when no PR is available. Then all lines are
+commentable.
+
+In issue mode, `linkCommit` is the commit that the issue links to. It is
+`null` if no remote branch contains HEAD. In issue mode, `warnings` do not
+block the submit.
 
 | Problem code | Cause |
 | --- | --- |
 | `gh-missing` | The GitHub CLI is not installed. |
 | `gh-auth` | The GitHub CLI has no login. |
-| `no-pr` | The branch has no open PR. |
 | `no-repo` | `gh` cannot find the GitHub repository. |
 | `not-git` | The docs are not in a git repository. |
 | `gh-error` | Another `gh` command failed. |
@@ -84,5 +91,15 @@ The server sends this payload to `repos/{owner}/{repo}/pulls/{n}/reviews`:
       "body": "> The selected text\n\nMake this shorter."
     }
   ]
+}
+```
+
+In issue mode, the request can also have a `title`. The server ignores
+`event`. It sends this payload to `repos/{owner}/{repo}/issues`:
+
+```json
+{
+  "title": "Docs review: update-guide",
+  "body": "Some small changes.\n\n---\n\n## Comments\n\n### [docs/guide/intro.md:3-5](https://github.com/octo/docs/blob/3f2c.../docs/guide/intro.md?plain=1#L3-L5)\n\n> The selected text\n\nMake this shorter.\n\n---\n\n_Review of branch `update-guide` at `3f2c...`. The branch has no open pull request._"
 }
 ```

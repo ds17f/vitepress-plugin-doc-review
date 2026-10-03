@@ -14,6 +14,13 @@ body as `path:line: comment`. The plugin does not drop the comment.
 If a comment on a range of lines is only partly in the diff, the plugin makes
 the range smaller. The comment then tells the initial range.
 
+## No open PR
+
+If the current branch has no open PR, the plugin cannot send a review. Then
+the submit opens one GitHub issue. The issue contains the summary and all of
+the comments. Each comment shows the file and the lines. GitHub does not show
+these comments in a PR.
+
 ## Dev mode only
 
 The review mode does not operate in a production build or in

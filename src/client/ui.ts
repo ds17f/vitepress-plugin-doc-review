@@ -55,7 +55,7 @@ const ReviewApp = defineComponent({
 
     watch(draft, () => saveDraft(draft), { deep: true })
 
-    // `null` means the commentable lines are unknown (dry run without a PR): all lines are allowed.
+    // `null` means the commentable lines are unknown (no PR): all lines are allowed.
     const commentable = computed(() => (state.status ? state.status.commentable : {}))
     const inDiff = (path: string, start: number, end: number) =>
       state.status ? rangeTouchesDiff(commentable.value, path, start, end) : true
@@ -236,10 +236,13 @@ const ReviewApp = defineComponent({
         : ''
     )
 
+    const issueMode = computed(() => state.status?.mode === 'issue')
+
     const submitBlockedReason = computed(() => {
       const s = state.status
       if (!s) return state.loading ? 'Loading the pull request…' : 'The review server is not available.'
       if (!s.canSubmit) return s.problem?.message ?? 'Fix the warnings, then reload.'
+      if (issueMode.value) return draft.comments.length || draft.summary.trim() ? '' : 'Add a comment or a summary.'
       if (!draft.comments.length && !draft.summary.trim() && draft.event !== 'APPROVE') return 'Add a comment or a summary.'
       if (draft.event === 'REQUEST_CHANGES' && !draft.summary.trim() && !outsideCount.value) return '"Request changes" needs a summary.'
       return ''
@@ -253,6 +256,7 @@ const ReviewApp = defineComponent({
         const res = await submitReview({
           event: draft.event,
           body: draft.summary,
+          title: issueMode.value ? draft.title : undefined,
           comments: draft.comments.map(({ id, path, line, startLine, body, quote }) => ({ id, path, line, startLine, body, quote }))
         })
         state.result = res
@@ -356,9 +360,15 @@ const ReviewApp = defineComponent({
         )
       }
       if (s.pr) out.push(h('div', { class: 'dr-muted' }, 'A gray bar on the left of a block means that it is not in the PR diff.'))
-      if (s.dryRun) out.push(note('tip', s.pr ? 'Dry run: Submit logs the review in the dev server terminal. Nothing goes to GitHub.' : 'Dry run: Submit logs the review in the dev server terminal. Nothing goes to GitHub. No PR is available, so all lines count as in the diff.'))
+      if (s.mode === 'issue')
+        out.push(note('tip', `Branch "${s.branch ?? 'detached HEAD'}" has no open pull request. Submit opens an issue in ${s.repo} with all of the comments.`))
+      if (s.dryRun) {
+        const what = s.mode === 'issue' ? 'the issue' : 'the review'
+        const noPr = !s.pr && s.mode === 'review' ? ' No PR is available, so all lines count as in the diff.' : ''
+        out.push(note('tip', `Dry run: Submit logs ${what} in the dev server terminal. Nothing goes to GitHub.${noPr}`))
+      }
       if (s.problem) out.push(note(s.dryRun ? 'warning' : 'danger', `${s.problem.message} Your comments stay here as a local draft.`))
-      for (const w of s.warnings) out.push(note('warning', s.dryRun ? w.message : `${w.message} Submit is blocked.`))
+      for (const w of s.warnings) out.push(note('warning', s.dryRun || s.mode === 'issue' ? w.message : `${w.message} Submit is blocked.`))
       if (branchMismatch.value) out.push(note('warning', branchMismatch.value))
       return out
     }
@@ -401,6 +411,11 @@ const ReviewApp = defineComponent({
       if (!r) return null
       if (!r.ok) return note('danger', r.error?.message ?? 'The submit failed.')
       const outside = r.outsideDiff ? ` ${r.outsideDiff} comment(s) outside the diff went in the review body.` : ''
+      if (r.mode === 'issue') {
+        if (r.dryRun)
+          return h('div', [note('tip', 'Dry run: the issue is in the dev server terminal. Nothing went to GitHub.'), h('div', { class: 'dr-pre' }, JSON.stringify(r.payload, null, 2))])
+        return note('tip', [h('span', 'Issue opened. '), r.url ? h('a', { href: r.url, target: '_blank', rel: 'noreferrer' }, 'Open on GitHub') : null].filter(Boolean) as VNode[])
+      }
       if (r.dryRun) {
         return h('div', [
           note('tip', `Dry run: the payload is in the dev server terminal. Nothing went to GitHub.${outside}`),
@@ -419,7 +434,7 @@ const ReviewApp = defineComponent({
       const blocked = submitBlockedReason.value
       return h('div', { class: 'dr-panel', role: 'dialog', 'aria-label': 'Pending review' }, [
         h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' } }, [
-          h('h3', 'Pending review'),
+          h('h3', issueMode.value ? 'Pending review (issue)' : 'Pending review'),
           h('button', { class: 'dr-link', onClick: refresh, disabled: state.loading }, state.loading ? 'Loading…' : 'Reload PR')
         ]),
         ...renderStatus(),
@@ -427,29 +442,42 @@ const ReviewApp = defineComponent({
         draft.comments.length
           ? h('div', [...byPath.values()].flat().map(renderComment))
           : h('div', { class: 'dr-muted' }, 'Select text in the page, then click "Comment".'),
+        issueMode.value ? h('h4', 'Issue title') : null,
+        issueMode.value
+          ? h('input', {
+              class: 'dr-input',
+              value: draft.title,
+              placeholder: `Docs review: ${state.status?.branch ?? 'detached HEAD'}`,
+              onInput: (e: Event) => (draft.title = (e.target as HTMLInputElement).value)
+            })
+          : null,
         h('h4', 'Summary'),
         h('textarea', {
           value: draft.summary,
-          placeholder: 'Leave a summary (optional for Comment and Approve)',
+          placeholder: issueMode.value ? 'Leave a summary (optional)' : 'Leave a summary (optional for Comment and Approve)',
           onInput: (e: Event) => (draft.summary = (e.target as HTMLTextAreaElement).value)
         }),
-        h(
-          'div',
-          { class: 'dr-events', role: 'radiogroup' },
-          EVENTS.map((ev) =>
-            h('label', { title: ev.hint }, [
-              h('input', { type: 'radio', name: 'dr-event', value: ev.value, checked: draft.event === ev.value, onChange: () => (draft.event = ev.value) }),
-              ev.label
-            ])
-          )
-        ),
+        issueMode.value
+          ? null
+          : h(
+              'div',
+              { class: 'dr-events', role: 'radiogroup' },
+              EVENTS.map((ev) =>
+                h('label', { title: ev.hint }, [
+                  h('input', { type: 'radio', name: 'dr-event', value: ev.value, checked: draft.event === ev.value, onChange: () => (draft.event = ev.value) }),
+                  ev.label
+                ])
+              )
+            ),
         blocked && state.status ? h('div', { class: 'dr-muted' }, blocked) : null,
         h('div', { class: 'dr-row' }, [
           h('button', { class: 'dr-btn danger', disabled: !draft.comments.length && !draft.summary, onClick: discardAll }, 'Discard'),
           h(
             'button',
             { class: 'dr-btn primary', disabled: !!blocked || state.submitting, onClick: submit },
-            state.submitting ? 'Submitting…' : state.status?.dryRun ? 'Submit (dry run)' : 'Submit review'
+            state.submitting
+              ? 'Submitting…'
+              : `${issueMode.value ? 'Open issue' : 'Submit review'}${state.status?.dryRun ? ' (dry run)' : ''}`
           )
         ]),
         renderResult()

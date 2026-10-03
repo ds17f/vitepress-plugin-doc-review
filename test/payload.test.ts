@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildReviewPayload, ReviewInputError } from '../src/node/payload.js'
+import { buildIssuePayload, buildReviewPayload, lineLink, ReviewInputError } from '../src/node/payload.js'
 import type { Commentable, DraftComment } from '../src/shared/types.js'
 
 const sha = 'a'.repeat(40)
@@ -82,5 +82,49 @@ describe('buildReviewPayload', () => {
     expect(() => buildReviewPayload({ ...base, commitId: 'HEAD; rm -rf /', comments: [] })).toThrow(ReviewInputError)
     expect(() => buildReviewPayload({ ...base, event: 'REQUEST_CHANGES', body: '', comments: [c({})] })).toThrow(/summary/)
     expect(() => buildReviewPayload({ ...base, body: '', comments: [] })).toThrow(/empty/)
+  })
+})
+
+describe('buildIssuePayload', () => {
+  const base = { repo: 'octo/docs', title: '', body: '', branch: 'feature', linkCommit: sha }
+
+  it('puts the comments in file and line order, with links to the lines', () => {
+    const { title, body } = buildIssuePayload({
+      ...base,
+      body: 'Overall good.',
+      comments: [c({ id: '2', line: 30, startLine: 28, body: 'Second.', quote: 'Some text' }), c({ id: '1', path: 'docs/a b.md', line: 3, body: 'First.' })]
+    })
+    expect(title).toBe('Docs review: feature')
+    expect(body.startsWith('Overall good.\n\n---\n\n## Comments')).toBe(true)
+    const first = body.indexOf('### [docs/a b.md:3](https://github.com/octo/docs/blob/' + sha + '/docs/a%20b.md?plain=1#L3)')
+    const second = body.indexOf('### [docs/guide.md:28-30](')
+    expect(first).toBeGreaterThan(0)
+    expect(second).toBeGreaterThan(first)
+    expect(body).toContain('> Some text\n\nSecond.')
+    expect(body).toContain('branch `feature` at `aaaaaaa`')
+  })
+
+  it('has no links when HEAD is not pushed', () => {
+    const { body } = buildIssuePayload({ ...base, linkCommit: null, comments: [c({})] })
+    expect(body).toContain('### docs/guide.md:5\n')
+    expect(body).not.toContain('https://')
+    expect(body).toContain('(not pushed)')
+  })
+
+  it('uses the title from the reviewer', () => {
+    expect(buildIssuePayload({ ...base, title: '  Fix   the guide ', comments: [c({})] }).title).toBe('Fix the guide')
+  })
+
+  it('rejects bad input', () => {
+    expect(() => buildIssuePayload({ ...base, comments: [] })).toThrow(/empty/)
+    expect(() => buildIssuePayload({ ...base, title: 'x'.repeat(300), comments: [c({})] })).toThrow(/title/)
+    expect(() => buildIssuePayload({ ...base, comments: [c({ path: '../x.md' })] })).toThrow(ReviewInputError)
+  })
+})
+
+describe('lineLink', () => {
+  it('links one line or a range', () => {
+    expect(lineLink('o/r', sha, 'docs/a.md', 4, 4)).toBe(`https://github.com/o/r/blob/${sha}/docs/a.md?plain=1#L4`)
+    expect(lineLink('o/r', sha, 'docs/a.md', 2, 4)).toBe(`https://github.com/o/r/blob/${sha}/docs/a.md?plain=1#L2-L4`)
   })
 })

@@ -21,7 +21,8 @@ export const css = /* css */ `
 }
 #doc-review-root button { font: inherit; cursor: pointer; }
 #doc-review-root button:disabled { cursor: not-allowed; opacity: 0.55; }
-#doc-review-root textarea {
+#doc-review-root textarea,
+#doc-review-root .dr-input {
   box-sizing: border-box;
   width: 100%;
   min-height: 72px;
@@ -33,7 +34,9 @@ export const css = /* css */ `
   font: inherit;
   resize: vertical;
 }
-#doc-review-root textarea:focus { outline: none; border-color: var(--vp-c-brand-1); }
+#doc-review-root .dr-input { min-height: 0; }
+#doc-review-root textarea:focus,
+#doc-review-root .dr-input:focus { outline: none; border-color: var(--vp-c-brand-1); }
 .dr-btn {
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;

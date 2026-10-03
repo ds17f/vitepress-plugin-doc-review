@@ -40,7 +40,8 @@ browser in the Playwright cache.
 1. Start the site with `npm run docs:dev:dry`.
 2. Open the [Playground](./playground.md).
 3. Select text and add comments.
-4. Open the **Review** panel and click **Submit (dry run)**.
+4. Open the **Review** panel and click **Submit review (dry run)**. If the
+   branch has no open PR, the button is **Open issue (dry run)**.
 5. Compare the `path` and `line` in the terminal with the .md file.
 
 ## The first real test

@@ -1,6 +1,7 @@
 import type {
   Commentable,
   DraftComment,
+  GitHubIssuePayload,
   GitHubReviewComment,
   GitHubReviewPayload,
   ReviewEvent
@@ -134,4 +135,54 @@ export function buildReviewPayload(input: BuildPayloadInput): BuildPayloadResult
   const payload: GitHubReviewPayload = { commit_id: input.commitId, event: input.event, comments }
   if (body) payload.body = body
   return { payload, outside }
+}
+
+export interface BuildIssueInput {
+  /** `owner/name`. */
+  repo: string
+  title: string
+  body: string
+  comments: DraftComment[]
+  branch: string | null
+  /** Pushed commit for the links to the lines. `null`: no links. */
+  linkCommit: string | null
+}
+
+const MAX_TITLE = 256
+const MAX_ISSUE_BODY = 65536
+
+/** Link to the lines of a file at one commit. `?plain=1` shows a .md file as text, so the line anchor works. */
+export function lineLink(repo: string, commit: string, path: string, start: number, line: number): string {
+  const file = path.split('/').map(encodeURIComponent).join('/')
+  const anchor = start < line ? `L${start}-L${line}` : `L${line}`
+  return `https://github.com/${repo}/blob/${commit}/${file}?plain=1#${anchor}`
+}
+
+/** Build the body of `POST /repos/{owner}/{repo}/issues`. All comments go in the issue body, in file and line order. */
+export function buildIssuePayload(input: BuildIssueInput): GitHubIssuePayload {
+  if (typeof input.title !== 'string') throw new ReviewInputError('The issue title must be a string.')
+  if (typeof input.body !== 'string') throw new ReviewInputError('The review summary must be a string.')
+  if (!Array.isArray(input.comments)) throw new ReviewInputError('comments must be an array.')
+  input.comments.forEach(validateComment)
+
+  const summary = input.body.trim()
+  if (!summary && !input.comments.length) throw new ReviewInputError('The review is empty. Add a summary or a comment.')
+
+  const title = input.title.trim().replace(/\s+/g, ' ') || `Docs review: ${input.branch ?? 'detached HEAD'}`
+  if (title.length > MAX_TITLE) throw new ReviewInputError(`The issue title is too long. The maximum is ${MAX_TITLE} characters.`)
+
+  const sorted = [...input.comments].sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line)
+  const sections = sorted.map((c) => {
+    const start = c.startLine ?? c.line
+    const label = lineLabel(c.path, c.startLine ?? undefined, c.line)
+    const heading = input.linkCommit ? `[${label}](${lineLink(input.repo, input.linkCommit, c.path, start, c.line)})` : label
+    return `### ${heading}\n\n${commentBody(c)}`
+  })
+
+  const where = input.linkCommit ? `at \`${input.linkCommit.slice(0, 7)}\`` : '(not pushed)'
+  const footer = `_Review of branch \`${input.branch ?? 'detached HEAD'}\` ${where}. The branch has no open pull request._`
+  const parts = [summary, sections.length ? `## Comments\n\n${sections.join('\n\n')}` : '', footer].filter(Boolean)
+  const body = parts.join('\n\n---\n\n')
+  if (body.length > MAX_ISSUE_BODY) throw new ReviewInputError('The issue is too long for GitHub. Remove some comments, then submit again.')
+  return { title, body }
 }

@@ -10,6 +10,9 @@ submit, the plugin sends all of the comments to the open PR of the current git
 branch as one GitHub review. Each comment is on the correct file and line, so
 it shows in the "Files changed" tab of the PR.
 
+If the branch has no open PR, the plugin opens a GitHub issue. The issue
+contains all of the comments. See [Without an open PR](#without-an-open-pr).
+
 The full documentation is a VitePress site in `docs/`. The site also uses the
 plugin, so you can use it to test the plugin. See
 [Run the docs site](#run-the-docs-site).
@@ -23,7 +26,7 @@ plugin, so you can use it to test the plugin. See
 | The GitHub CLI (`gh`) | The dev server uses `gh` to get the PR and to send the review. Get it from <https://cli.github.com>. |
 | A `gh` login | Run `gh auth login` one time. The dev server uses this login. |
 | A git repository on GitHub | The docs must be in the repository. The docs directory can be at any depth. |
-| An open PR for the current branch | The review goes to this PR. |
+| An open PR for the current branch | The review goes to this PR. Without an open PR, the comments go to a new issue. |
 
 The plugin has no other runtime dependencies.
 
@@ -101,6 +104,8 @@ The review UI is a Vue app. It shows:
   In the panel, you can edit or delete each comment, write a summary, and
   select **Comment**, **Approve**, or **Request changes**.
 - A gray bar on the left of each block that is not in the PR diff.
+- An **Issue title** box in place of the review types, if the branch has no
+  open PR.
 
 The UI keeps the draft in `localStorage`, so a page reload does not delete the
 comments. The styles use the VitePress CSS variables, so the UI works in the
@@ -118,10 +123,27 @@ A Vite plugin with `apply: 'serve'` adds 2 endpoints to the dev server:
   `gh api repos/{owner}/{repo}/pulls/{n}/files`. It also does the local
   checks.
 - `POST /__review/submit` does the checks again. Then it sends the review to
-  `repos/{owner}/{repo}/pulls/{n}/reviews` with `gh api`.
+  `repos/{owner}/{repo}/pulls/{n}/reviews` with `gh api`. If the branch has no
+  open PR, it sends an issue to `repos/{owner}/{repo}/issues`.
 
 The server runs `gh` with `execFile` and an argument array. It does not use a
 shell. It sends the review JSON on stdin with `--input -`.
+
+## Without an open PR
+
+The plugin opens an issue in these conditions:
+
+- The current branch has no PR.
+- The PR of the current branch is closed or merged.
+- HEAD is detached and you set the `repo` option.
+
+The issue has a title, the summary, and the comments in file and line order.
+Each comment has the file, the lines, the selected text, and the comment.
+If you do not write a title, the title is `Docs review: <branch>`.
+
+If HEAD is on a remote branch, each file and line is a link to those lines at
+that commit. If you did not push HEAD, the issue has no links. The panel shows
+a warning, but you can submit.
 
 ## Limits
 
@@ -136,8 +158,9 @@ shell. It sends the review JSON on stdin with `--input -`.
 - **Includes and dynamic routes.** On a page that uses `<!--@include: -->` or
   a dynamic route, the plugin turns off comments.
 - **Raw HTML and Vue components** in the markdown do not get source lines.
-- **Problems with `gh`.** If `gh` is not installed, has no login, or finds no
-  PR, the UI shows the problem. The comments stay as a local draft.
+- **Problems with `gh`.** If `gh` is not installed, has no login, or cannot
+  find the repository, the UI shows the problem. The comments stay as a local
+  draft.
 
 ## Security model
 
@@ -146,12 +169,12 @@ shell. It sends the review JSON on stdin with `--input -`.
 - **Only the dev server can send requests.** The server refuses a request if
   the `Origin` header or the `Host` header is not the dev server. It also
   refuses a request without the `X-Doc-Review: 1` header. Thus other websites
-  in the browser cannot post reviews, and DNS rebinding attacks do not work.
+  in the browser cannot post reviews or issues, and DNS rebinding attacks do not work.
 - **No shell.** Text from the browser never goes into a command line.
 - **Input checks.** The server checks each path and line. At submit, it gets
   the PR and the local state again.
 - **Network access.** If you start the dev server with `--host`, other
-  computers on the network can submit a review with your `gh` login. Use
+  computers on the network can submit a review or open an issue with your `gh` login. Use
   `--host` only on a network that you trust.
 
 ## Run the docs site

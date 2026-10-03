@@ -40,4 +40,5 @@ Read [How it works](./how-it-works.md) for the details.
 - Node.js 18 or later.
 - The GitHub CLI (`gh`), with a login.
 - A git repository on GitHub that contains the docs.
-- An open PR for the current branch.
+- An open PR for the current branch. Without an open PR, the comments go to a
+  new issue. Read [Do a review](./reviewing.md#submit-without-an-open-pr).
