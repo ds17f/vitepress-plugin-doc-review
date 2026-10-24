@@ -3,11 +3,13 @@ import fs from 'node:fs'
 import type { Plugin, ResolvedConfig } from 'vite'
 import type { UserConfig } from 'vitepress'
 import { docReviewMarkdown } from './markdown.js'
+import { agentSink } from './agent.js'
 import { installReviewMiddleware } from './server.js'
 
 export { docReviewMarkdown, lineOffset, mapLines } from './markdown.js'
 export { parsePatch, commentableFromFiles } from './diff.js'
-export { buildReviewPayload, commentBody, ReviewInputError } from './payload.js'
+export { buildAgentFeedback, buildReviewPayload, commentBody, ReviewInputError } from './payload.js'
+export { setAgentSink } from './agent.js'
 export { isAllowedRequest } from './server.js'
 export type * from '../shared/types.js'
 
@@ -61,10 +63,12 @@ function reviewVitePlugin(state: State, options: DocReviewOptions): Plugin {
           gitRoot: state.gitRoot,
           srcDir: state.srcDir,
           repo: options.repo,
-          dryRun: !!options.dryRun
+          dryRun: !!options.dryRun,
+          agent: !!agentSink()
         })
       })
-      if (options.dryRun) log('dry-run mode: reviews are logged here and not sent to GitHub.')
+      if (agentSink()) log('agent mode: submit sends the review to the doc-review command.')
+      else if (options.dryRun) log('dry-run mode: reviews are logged here and not sent to GitHub.')
     }
   }
 }

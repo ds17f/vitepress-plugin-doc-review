@@ -13,7 +13,8 @@ the request checks.
 
 Gets the PR of the current branch and the lines that you can comment on.
 If the branch has no open PR, `mode` is `issue`. Then the submit opens an
-issue.
+issue. If the `doc-review` command started the server, `mode` is `agent`. In
+agent mode, the server does not run `gh`.
 
 The server runs these commands:
 
@@ -103,3 +104,18 @@ In issue mode, the request can also have a `title`. The server ignores
   "body": "Some small changes.\n\n---\n\n## Comments\n\n### [docs/guide/intro.md:3-5](https://github.com/octo/docs/blob/3f2c.../docs/guide/intro.md?plain=1#L3-L5)\n\n> The selected text\n\nMake this shorter.\n\n---\n\n_Review of branch `update-guide` at `3f2c...`. The branch has no open pull request._"
 }
 ```
+
+## POST /__review/dismiss
+
+Agent mode only. Closes the review without feedback. The `doc-review` command
+writes `The user closed the review without feedback.` on stdout. Then the
+server stops. The request has no body.
+
+Example response:
+
+```json
+{ "ok": true, "mode": "agent", "dismissed": true }
+```
+
+If the `doc-review` command did not start the server, the response has
+`ok: false` and the error code `no-agent`.

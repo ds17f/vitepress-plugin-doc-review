@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIssuePayload, buildReviewPayload, lineLink, ReviewInputError } from '../src/node/payload.js'
+import { buildAgentFeedback, buildIssuePayload, buildReviewPayload, lineLink, ReviewInputError } from '../src/node/payload.js'
 import type { Commentable, DraftComment } from '../src/shared/types.js'
 
 const sha = 'a'.repeat(40)
@@ -126,5 +126,38 @@ describe('lineLink', () => {
   it('links one line or a range', () => {
     expect(lineLink('o/r', sha, 'docs/a.md', 4, 4)).toBe(`https://github.com/o/r/blob/${sha}/docs/a.md?plain=1#L4`)
     expect(lineLink('o/r', sha, 'docs/a.md', 2, 4)).toBe(`https://github.com/o/r/blob/${sha}/docs/a.md?plain=1#L2-L4`)
+  })
+})
+
+describe('buildAgentFeedback', () => {
+  const base = { gitRoot: '/repo', branch: 'main' }
+
+  it('is an approval when the review is empty', () => {
+    const f = buildAgentFeedback({ ...base, body: '  ', comments: [] })
+    expect(f.decision).toBe('approved')
+    expect(f.markdown).toBe('The user approved.')
+  })
+
+  it('lists the comments in file and line order with the quote', () => {
+    const f = buildAgentFeedback({
+      ...base,
+      body: 'Looks close.',
+      comments: [
+        c({ id: '2', path: 'docs/b.md', line: 3, body: 'Second.' }),
+        c({ id: '1', path: 'docs/a.md', startLine: 4, line: 6, body: ' First. ', quote: 'some text' })
+      ]
+    })
+    expect(f.decision).toBe('annotated')
+    expect(f.comments).toEqual([
+      { path: 'docs/a.md', startLine: 4, line: 6, body: 'First.', quote: 'some text' },
+      { path: 'docs/b.md', line: 3, body: 'Second.' }
+    ])
+    expect(f.markdown).toContain('relative to `/repo`')
+    expect(f.markdown).toContain('## Summary\n\nLooks close.')
+    expect(f.markdown.indexOf('### docs/a.md:4-6\n\n> some text\n\nFirst.')).toBeLessThan(f.markdown.indexOf('### docs/b.md:3'))
+  })
+
+  it('refuses a bad comment', () => {
+    expect(() => buildAgentFeedback({ ...base, body: '', comments: [c({ path: '../etc/passwd' })] })).toThrow(ReviewInputError)
   })
 })

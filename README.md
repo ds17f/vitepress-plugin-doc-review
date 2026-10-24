@@ -13,6 +13,9 @@ it shows in the "Files changed" tab of the PR.
 If the branch has no open PR, the plugin opens a GitHub issue. The issue
 contains all of the comments. See [Without an open PR](#without-an-open-pr).
 
+The plugin can also give the review to a coding agent, for example Claude
+Code. See [Send the review to an agent](#send-the-review-to-an-agent).
+
 The full documentation is a VitePress site in `docs/`. The site also uses the
 plugin, so you can use it to test the plugin. See
 [Run the docs site](#run-the-docs-site).
@@ -145,6 +148,40 @@ If HEAD is on a remote branch, each file and line is a link to those lines at
 that commit. If you did not push HEAD, the issue has no links. The panel shows
 a warning, but you can submit.
 
+## Send the review to an agent
+
+The `doc-review` command starts the dev server in agent mode and opens the
+browser. In agent mode, the review does not go to GitHub. When you click
+**Send to agent**, the command writes the review on stdout. Then the server
+stops and the command ends. Agent mode does not use `gh`, a PR, or a push.
+
+```sh
+npx doc-review docs           # the review as markdown
+npx doc-review docs --json    # the review as JSON
+```
+
+The command writes all of the logs on stderr. Thus stdout has only the review.
+If you submit with no comments and no summary, the output is
+`The user approved.` If you click **Close without feedback**, the output is
+`The user closed the review without feedback.`
+
+The markdown output has one section for each comment, in file and line order.
+Each heading is `path:line` or `path:start-end`. Each path is relative to the
+git root. The line numbers are the lines in the .md file.
+
+The options are `--port <n>`, `--host <host>`, `--no-open`, and `--json`.
+
+### Use it in Claude Code
+
+The package has a Claude Code skill in `skills/doc-review/SKILL.md`:
+
+1. Copy the `skills/doc-review` directory to `.claude/skills/` in your
+   project, or to `~/.claude/skills/`.
+2. In Claude Code, type `/doc-review`.
+
+The skill runs `npx doc-review` and waits for the review. Then the agent does
+the changes in the .md files.
+
 ## Limits
 
 - **Only lines in the diff.** GitHub accepts a comment only on a line in the
@@ -186,6 +223,7 @@ plugin from `src/`, so it needs no build step.
 npm install
 npm run docs:dev        # the docs site with the review UI
 npm run docs:dev:dry    # the docs site in dry-run mode: no requests to GitHub
+npm run docs:agent      # build, then review the docs site in agent mode
 npm run docs:build      # a production build of the docs site
 npm run docs:preview    # serve the production build
 ```

@@ -1,6 +1,6 @@
 import { computed, createApp, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, watch, type VNode } from 'vue'
 import type { Router } from 'vitepress'
-import { fetchStatus, submitReview } from './api.js'
+import { dismissReview, fetchStatus, submitReview } from './api.js'
 import { emptyDraft, loadDraft, saveDraft } from './draft.js'
 import { BLOCK_SELECTOR, blocksForRange, targetFromSelection, type SelectionTarget } from './selection.js'
 import { css } from './style.js'
@@ -237,11 +237,15 @@ const ReviewApp = defineComponent({
     )
 
     const issueMode = computed(() => state.status?.mode === 'issue')
+    const agentMode = computed(() => state.status?.mode === 'agent')
+    const hasContent = computed(() => !!draft.comments.length || !!draft.summary.trim())
 
     const submitBlockedReason = computed(() => {
       const s = state.status
       if (!s) return state.loading ? 'Loading the pull request…' : 'The review server is not available.'
       if (!s.canSubmit) return s.problem?.message ?? 'Fix the warnings, then reload.'
+      // An empty agent review is an approval.
+      if (agentMode.value) return ''
       if (issueMode.value) return draft.comments.length || draft.summary.trim() ? '' : 'Add a comment or a summary.'
       if (!draft.comments.length && !draft.summary.trim() && draft.event !== 'APPROVE') return 'Add a comment or a summary.'
       if (draft.event === 'REQUEST_CHANGES' && !draft.summary.trim() && !outsideCount.value) return '"Request changes" needs a summary.'
@@ -261,6 +265,20 @@ const ReviewApp = defineComponent({
         })
         state.result = res
         if (res.ok && !res.dryRun) Object.assign(draft, emptyDraft(), { branch: state.status?.branch ?? null })
+      } catch (e) {
+        state.result = { ok: false, error: { code: 'network', message: (e as Error).message } }
+      } finally {
+        state.submitting = false
+      }
+    }
+
+    async function dismiss() {
+      const pending = hasContent.value ? ' The pending comments stay in this browser as a draft.' : ''
+      if (!confirm(`Close the review and send no feedback to the agent?${pending}`)) return
+      state.submitting = true
+      state.result = null
+      try {
+        state.result = await dismissReview()
       } catch (e) {
         state.result = { ok: false, error: { code: 'network', message: (e as Error).message } }
       } finally {
@@ -360,6 +378,8 @@ const ReviewApp = defineComponent({
         )
       }
       if (s.pr) out.push(h('div', { class: 'dr-muted' }, 'A gray bar on the left of a block means that it is not in the PR diff.'))
+      if (s.mode === 'agent')
+        out.push(note('tip', 'Agent review: Submit sends the comments to the agent that started this server. Nothing goes to GitHub. Submit with no comments to approve.'))
       if (s.mode === 'issue')
         out.push(note('tip', `Branch "${s.branch ?? 'detached HEAD'}" has no open pull request. Submit opens an issue in ${s.repo} with all of the comments.`))
       if (s.dryRun) {
@@ -410,6 +430,8 @@ const ReviewApp = defineComponent({
       const r = state.result
       if (!r) return null
       if (!r.ok) return note('danger', r.error?.message ?? 'The submit failed.')
+      if (r.mode === 'agent' && r.dismissed) return note('tip', 'The review is closed. The agent got no feedback. The server stopped. You can close this tab.')
+      if (r.mode === 'agent') return note('tip', 'The agent has the review. The server stopped. You can close this tab.')
       const outside = r.outsideDiff ? ` ${r.outsideDiff} comment(s) outside the diff went in the review body.` : ''
       if (r.mode === 'issue') {
         if (r.dryRun)
@@ -434,8 +456,8 @@ const ReviewApp = defineComponent({
       const blocked = submitBlockedReason.value
       return h('div', { class: 'dr-panel', role: 'dialog', 'aria-label': 'Pending review' }, [
         h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' } }, [
-          h('h3', issueMode.value ? 'Pending review (issue)' : 'Pending review'),
-          h('button', { class: 'dr-link', onClick: refresh, disabled: state.loading }, state.loading ? 'Loading…' : 'Reload PR')
+          h('h3', issueMode.value ? 'Pending review (issue)' : agentMode.value ? 'Pending review (agent)' : 'Pending review'),
+          agentMode.value ? null : h('button', { class: 'dr-link', onClick: refresh, disabled: state.loading }, state.loading ? 'Loading…' : 'Reload PR')
         ]),
         ...renderStatus(),
         h('h4', `Comments (${draft.comments.length})`),
@@ -454,10 +476,10 @@ const ReviewApp = defineComponent({
         h('h4', 'Summary'),
         h('textarea', {
           value: draft.summary,
-          placeholder: issueMode.value ? 'Leave a summary (optional)' : 'Leave a summary (optional for Comment and Approve)',
+          placeholder: issueMode.value || agentMode.value ? 'Leave a summary (optional)' : 'Leave a summary (optional for Comment and Approve)',
           onInput: (e: Event) => (draft.summary = (e.target as HTMLTextAreaElement).value)
         }),
-        issueMode.value
+        issueMode.value || agentMode.value
           ? null
           : h(
               'div',
@@ -472,12 +494,17 @@ const ReviewApp = defineComponent({
         blocked && state.status ? h('div', { class: 'dr-muted' }, blocked) : null,
         h('div', { class: 'dr-row' }, [
           h('button', { class: 'dr-btn danger', disabled: !draft.comments.length && !draft.summary, onClick: discardAll }, 'Discard'),
+          agentMode.value
+            ? h('button', { class: 'dr-btn', disabled: state.submitting, title: 'Stop the review. The agent gets no feedback.', onClick: dismiss }, 'Close without feedback')
+            : null,
           h(
             'button',
             { class: 'dr-btn primary', disabled: !!blocked || state.submitting, onClick: submit },
             state.submitting
               ? 'Submitting…'
-              : `${issueMode.value ? 'Open issue' : 'Submit review'}${state.status?.dryRun ? ' (dry run)' : ''}`
+              : agentMode.value
+                ? hasContent.value ? 'Send to agent' : 'Approve'
+                : `${issueMode.value ? 'Open issue' : 'Submit review'}${state.status?.dryRun ? ' (dry run)' : ''}`
           )
         ]),
         renderResult()

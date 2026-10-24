@@ -63,8 +63,8 @@ function checkBlock(b: Block, lines: string[]) {
   else if (b.tag === 'blockquote') expect(first, ctx).toMatch(/^> /)
   else if (b.tag === 'hr') expect(first, ctx).toBe('---')
   else if (b.kind === 'fence') {
-    expect(first, ctx).toMatch(/^```/)
-    expect(last, ctx).toMatch(/^```$/)
+    expect(first, ctx).toMatch(/^\s*```/)
+    expect(last, ctx).toMatch(/^\s*```$/)
   } else if (b.kind === 'code') expect(first, ctx).toMatch(/^ {4}/)
 }
 

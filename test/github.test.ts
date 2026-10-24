@@ -153,6 +153,30 @@ describe('loadContext without an open PR', () => {
   })
 })
 
+describe('loadContext in agent mode', () => {
+  it('needs no gh and allows all lines', async () => {
+    const oldGhPath = process.env.PATH
+    // No gh on PATH: agent mode must not call it.
+    process.env.PATH = oldPath
+    try {
+      const ctx = await loadContext({ ...opts(), agent: true })
+      expect(ctx.mode).toBe('agent')
+      expect(ctx.canSubmit).toBe(true)
+      expect(ctx.commentable).toBeNull()
+      expect(ctx.branch).toBe('feature')
+      expect(ctx.problem).toBeNull()
+    } finally {
+      process.env.PATH = oldGhPath
+    }
+  })
+
+  it('still needs a git repository', async () => {
+    const ctx = await loadContext({ ...opts(), gitRoot: null, agent: true })
+    expect(ctx.canSubmit).toBe(false)
+    expect(ctx.problem?.code).toBe('not-git')
+  })
+})
+
 describe('postIssue with a fake gh', () => {
   it('sends the issue on stdin', async () => {
     fs.rmSync(logFile, { force: true })

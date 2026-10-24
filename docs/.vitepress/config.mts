@@ -23,6 +23,7 @@ export default withReview(
             { text: 'Introduction', link: '/guide/introduction' },
             { text: 'Getting started', link: '/guide/getting-started' },
             { text: 'Do a review', link: '/guide/reviewing' },
+            { text: 'Send a review to an agent', link: '/guide/agent' },
             { text: 'How it works', link: '/guide/how-it-works' },
             { text: 'Limits', link: '/guide/limits' },
             { text: 'Security', link: '/guide/security' }
