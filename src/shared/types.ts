@@ -60,8 +60,9 @@ export interface PrInfo {
  * Where a submit goes:
  * - `review`: a review on the open PR of the current branch.
  * - `issue`: a new issue in the repository, because the branch has no open PR.
+ * - `agent`: the `doc-review` command started the server. The comments go to its stdout, for a coding agent.
  */
-export type SubmitMode = 'review' | 'issue'
+export type SubmitMode = 'review' | 'issue' | 'agent'
 
 /** Response of `GET /__review/pr`. */
 export interface PrStatus {
@@ -99,6 +100,23 @@ export interface GitHubIssuePayload {
   body: string
 }
 
+/** What the `doc-review` command prints when the reviewer submits in agent mode. */
+export interface AgentFeedback {
+  /**
+   * - `approved`: the reviewer submitted with no comments and no summary.
+   * - `annotated`: the reviewer submitted comments and/or a summary.
+   * - `dismissed`: the reviewer closed the review without feedback.
+   */
+  decision: 'approved' | 'annotated' | 'dismissed'
+  /** Absolute path of the git root. Each comment path is relative to it. */
+  gitRoot: string
+  branch: string | null
+  summary: string
+  comments: Omit<DraftComment, 'id'>[]
+  /** The feedback as markdown. */
+  markdown: string
+}
+
 /** Response of `POST /__review/submit`. */
 export interface SubmitResponse {
   ok: boolean
@@ -108,5 +126,7 @@ export interface SubmitResponse {
   /** Number of comments that went into the review body because they are outside the diff. */
   outsideDiff?: number
   url?: string
+  /** Agent mode: the reviewer closed the review without feedback. */
+  dismissed?: boolean
   error?: { code: string; message: string }
 }

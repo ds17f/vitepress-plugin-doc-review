@@ -15,6 +15,8 @@ The Node.js entry point. Use it in `.vitepress/config.mts`.
 | `docReviewMarkdown(md, options)` | The markdown-it plugin alone. |
 | `parsePatch(patch)` | Gets the new-side line ranges from a unified diff patch. |
 | `buildReviewPayload(input)` | Makes the body of the GitHub review request. |
+| `buildAgentFeedback(input)` | Makes the review that the `doc-review` command writes on stdout. |
+| `setAgentSink(sink)` | Puts the dev server in agent mode. The server gives each submitted review to `sink`. |
 | `isAllowedRequest(req, hosts, port)` | The request check of the endpoints. |
 
 ## vitepress-plugin-doc-review/client

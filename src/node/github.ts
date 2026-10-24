@@ -10,6 +10,8 @@ export interface ContextOptions {
   /** `owner/name`. Detected with `gh` when not set. */
   repo?: string
   dryRun: boolean
+  /** The `doc-review` command started the server: the submit goes to the agent, not to GitHub. */
+  agent?: boolean
 }
 
 export interface ReviewContext extends PrStatus {
@@ -83,7 +85,7 @@ export async function loadContext(opts: ContextOptions): Promise<ReviewContext> 
       ctx.commentable = null
       if (ctx.dryRun) ctx.commitId ??= '0000000'
     }
-    if (ctx.mode === 'issue') ctx.canSubmit = !ctx.problem
+    if (ctx.mode !== 'review') ctx.canSubmit = !ctx.problem
     else ctx.canSubmit = ctx.dryRun ? !!ctx.commitId : !!ctx.pr && !ctx.problem && ctx.warnings.length === 0
     return ctx
   }
@@ -96,6 +98,12 @@ export async function loadContext(opts: ContextOptions): Promise<ReviewContext> 
   ctx.branch = await git(root, ['branch', '--show-current'])
   const head = await git(root, ['rev-parse', 'HEAD'])
   if (head) ctx.commitId = head
+
+  // The agent reads the local files, so it needs no PR, no push, and no `gh`.
+  if (opts.agent) {
+    ctx.mode = 'agent'
+    return finish()
+  }
 
   /** The repository is known, but the branch has no open PR: the submit opens an issue. */
   const issueMode = async (): Promise<ReviewContext> => {

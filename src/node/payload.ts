@@ -1,4 +1,5 @@
 import type {
+  AgentFeedback,
   Commentable,
   DraftComment,
   GitHubIssuePayload,
@@ -185,4 +186,39 @@ export function buildIssuePayload(input: BuildIssueInput): GitHubIssuePayload {
   const body = parts.join('\n\n---\n\n')
   if (body.length > MAX_ISSUE_BODY) throw new ReviewInputError('The issue is too long for GitHub. Remove some comments, then submit again.')
   return { title, body }
+}
+
+export const DISMISSED_TEXT = 'The user closed the review without feedback.'
+
+export interface BuildAgentInput {
+  gitRoot: string
+  branch: string | null
+  body: string
+  comments: DraftComment[]
+}
+
+/** Build the feedback that the `doc-review` command gives to the agent. All comments are in file and line order. */
+export function buildAgentFeedback(input: BuildAgentInput): AgentFeedback {
+  if (typeof input.body !== 'string') throw new ReviewInputError('The review summary must be a string.')
+  if (!Array.isArray(input.comments)) throw new ReviewInputError('comments must be an array.')
+  input.comments.forEach(validateComment)
+
+  const summary = input.body.trim()
+  const comments = [...input.comments]
+    .sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line)
+    .map(({ path, line, startLine, body, quote }) => {
+      const out: Omit<DraftComment, 'id'> = { path, line, body: body.trim() }
+      if (startLine !== undefined && startLine !== null && startLine !== line) out.startLine = startLine
+      if (quote?.trim()) out.quote = quote.trim()
+      return out
+    })
+  if (!summary && !comments.length) {
+    return { decision: 'approved', gitRoot: input.gitRoot, branch: input.branch, summary, comments, markdown: 'The user approved.' }
+  }
+
+  const sections = comments.map((c) => `### ${lineLabel(c.path, c.startLine, c.line)}\n\n${commentBody(c)}`)
+  const intro = `The user reviewed the rendered docs and left feedback. Each path is relative to \`${input.gitRoot}\`. The line numbers are the lines in the .md source file.`
+  const parts = ['# Docs review', intro, summary ? `## Summary\n\n${summary}` : '', sections.length ? `## Comments\n\n${sections.join('\n\n')}` : '']
+  const markdown = parts.filter(Boolean).join('\n\n')
+  return { decision: 'annotated', gitRoot: input.gitRoot, branch: input.branch, summary, comments, markdown }
 }

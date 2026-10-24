@@ -1,7 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { ViteDevServer } from 'vite'
-import { buildIssuePayload, buildReviewPayload, ReviewInputError } from './payload.js'
+import { agentSink } from './agent.js'
+import { buildAgentFeedback, buildIssuePayload, DISMISSED_TEXT, buildReviewPayload, ReviewInputError } from './payload.js'
 import { loadContext, postIssue, postReview, type ContextOptions, type ReviewContext } from './github.js'
 import type { SubmitRequest, SubmitResponse } from '../shared/types.js'
 
@@ -129,6 +130,7 @@ export function installReviewMiddleware(server: ViteDevServer, opts: MiddlewareO
         const input = (await readJson(req)) as SubmitRequest
         return send(res, 200, await submit(input, opts))
       }
+      if (req.method === 'POST' && url === '/dismiss') return send(res, 200, await dismiss(opts))
       return send(res, 404, { ok: false, error: { code: 'not-found', message: 'Unknown review endpoint.' } })
     } catch (e) {
       const bad = e instanceof ReviewInputError
@@ -146,6 +148,7 @@ async function submit(input: SubmitRequest, opts: MiddlewareOptions): Promise<Su
     const why = ctx.problem?.message ?? (ctx.warnings.map((w) => w.message).join(' ') || 'Cannot submit now.')
     return { ok: false, error: { code: ctx.problem?.code ?? 'blocked', message: why } }
   }
+  if (ctx.mode === 'agent') return submitAgent(input, ctx, opts)
   if (ctx.mode === 'issue') return submitIssue(input, ctx, opts)
   const { payload, outside } = buildReviewPayload({
     commitId: ctx.commitId!,
@@ -184,4 +187,24 @@ async function submitIssue(input: SubmitRequest, ctx: ReviewContext, opts: Middl
   const { url } = await postIssue(opts.context().gitRoot!, repo, payload)
   opts.log(`opened issue in ${repo}: ${url ?? ''}`)
   return { ok: true, dryRun: false, mode: 'issue', url }
+}
+
+/** Agent mode: tell the `doc-review` command that the reviewer closed the review without feedback. */
+async function dismiss(opts: MiddlewareOptions): Promise<SubmitResponse> {
+  const sink = agentSink()
+  if (!sink) return { ok: false, error: { code: 'no-agent', message: 'The doc-review command is not running.' } }
+  const ctx = await loadContext(opts.context())
+  opts.log('review closed without feedback.')
+  sink({ decision: 'dismissed', gitRoot: opts.context().gitRoot ?? '', branch: ctx.branch, summary: '', comments: [], markdown: DISMISSED_TEXT })
+  return { ok: true, mode: 'agent', dismissed: true }
+}
+
+/** Agent mode: give the comments to the `doc-review` command, which prints them and stops the server. */
+function submitAgent(input: SubmitRequest, ctx: ReviewContext, opts: MiddlewareOptions): SubmitResponse {
+  const sink = agentSink()
+  if (!sink) return { ok: false, error: { code: 'no-agent', message: 'The doc-review command is not running. Reload the page.' } }
+  const feedback = buildAgentFeedback({ gitRoot: opts.context().gitRoot!, branch: ctx.branch, body: input.body ?? '', comments: input.comments })
+  opts.log(`review sent to the agent: ${feedback.comments.length} comment(s).`)
+  sink(feedback)
+  return { ok: true, mode: 'agent' }
 }

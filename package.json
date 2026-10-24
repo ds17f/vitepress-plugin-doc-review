@@ -13,8 +13,12 @@
       "import": "./dist/client/index.js"
     }
   },
+  "bin": {
+    "doc-review": "./dist/node/cli.js"
+  },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
@@ -25,6 +29,7 @@
     "test:e2e": "node scripts/e2e-dry-run.mjs",
     "docs:dev": "vitepress dev docs",
     "docs:dev:dry": "DOC_REVIEW_DRY_RUN=1 vitepress dev docs",
+    "docs:agent": "npm run build && node dist/node/cli.js docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"
   },

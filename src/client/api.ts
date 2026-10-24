@@ -13,6 +13,16 @@ export async function fetchStatus(): Promise<PrStatus | null> {
   return data as PrStatus
 }
 
+/** Agent mode: close the review without feedback. The `doc-review` command then stops. */
+export async function dismissReview(): Promise<SubmitResponse> {
+  const res = await fetch('/__review/dismiss', { method: 'POST', headers: HEADERS })
+  try {
+    return (await res.json()) as SubmitResponse
+  } catch {
+    return { ok: false, error: { code: 'http', message: `HTTP ${res.status}` } }
+  }
+}
+
 export async function submitReview(req: SubmitRequest): Promise<SubmitResponse> {
   const res = await fetch('/__review/submit', {
     method: 'POST',

@@ -23,8 +23,10 @@ gh auth login
 Install the package as a development dependency:
 
 ```sh
-npm install --save-dev vitepress-plugin-doc-review
+npm install --save-dev github:ds17f/vitepress-plugin-doc-review
 ```
+
+The package is not on the npm registry. npm gets it from GitHub and builds it.
 
 ## Change the config file
 
@@ -72,3 +74,10 @@ If the **Comment** button shows, the plugin operates. Read
 Set `dryRun: true` for the first test. Then the server writes the review in
 the terminal and does not send it to GitHub.
 :::
+
+## Send the review to an agent
+
+To give the review to a coding agent and not to GitHub, run
+`npx doc-review docs`. To use it in Claude Code, run
+`npx doc-review install-skill`, then type `/doc-review`. Read
+[Send a review to an agent](./agent.md).
