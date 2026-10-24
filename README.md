@@ -185,7 +185,9 @@ npx doc-review install-skill --global   # for all projects: ~/.claude/skills/doc
 
 Then type `/doc-review` in Claude Code. To give the docs directory, type
 `/doc-review docs`. The skill runs `doc-review` and waits for the review. Then
-the agent does the changes in the .md files.
+the agent does the changes in the .md files. The plugin can be in a
+subdirectory of the project, for example `docs/`. The skill finds the command
+in `node_modules/.bin`.
 
 If you install a new version of the plugin, run `install-skill` again. If your
 copy of the skill is different, add `--force` to replace it.
