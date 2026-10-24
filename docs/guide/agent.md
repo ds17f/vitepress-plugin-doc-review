@@ -57,13 +57,33 @@ server stops. The pending comments stay in the browser as a draft.
 
 ## Use the review in Claude Code
 
-The package has a Claude Code skill in `skills/doc-review/SKILL.md`. The skill
-runs `npx doc-review`, waits for the review, and then does the changes.
+The package has a Claude Code skill. The skill runs `doc-review`, waits for
+the review, and then does the changes.
 
-1. Copy the `skills/doc-review` directory to `.claude/skills/` in your
-   project, or to `~/.claude/skills/`.
-2. In Claude Code, type `/doc-review`. To give the docs directory, type
+1. Install the plugin and add it to the site. See
+   [Getting started](./getting-started).
+2. Install the skill. Run one of these commands in the root of the project:
+
+   ```sh
+   npx doc-review install-skill            # for this project only
+   npx doc-review install-skill --global   # for all of your projects
+   ```
+
+3. In Claude Code, type `/doc-review`. To give the docs directory, type
    `/doc-review docs`.
+
+The first command writes `.claude/skills/doc-review/SKILL.md`. You can commit
+this file, so that all of the persons on the project get the skill. The
+`--global` command writes `~/.claude/skills/doc-review/SKILL.md`.
+
+If you install a new version of the plugin, run `install-skill` again. If your
+copy of the skill is different, add `--force` to replace it.
+
+::: warning
+Do not run `npm install doc-review`. The name `doc-review` on the npm registry
+does not belong to this plugin. A global skill works only in a project that has the plugin
+installed. In other projects, the skill tells you to install the plugin.
+:::
 
 ## The review output
 

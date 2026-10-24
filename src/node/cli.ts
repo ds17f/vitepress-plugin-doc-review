@@ -3,14 +3,19 @@
  * `doc-review [docs-dir]`: start the VitePress dev server in agent mode and
  * open the browser. When the reviewer submits, print the review on stdout and
  * stop. A coding agent runs this command and reads the review from stdout.
+ *
+ * `doc-review install-skill`: copy the Claude Code skill into `.claude/skills/`.
  */
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { setAgentSink } from './agent.js'
 import type { AgentFeedback } from '../shared/types.js'
 
 const USAGE = `Usage: doc-review [docs-dir] [options]
+       doc-review install-skill [--global] [--force]
 
 Start the VitePress dev server with the review UI and open the browser.
 When you submit the review, the comments go to stdout and the server stops.
@@ -24,7 +29,36 @@ Options:
                    can then see the docs and send a review.
   --no-open        Do not open the browser.
   --json           Print the review as JSON, not as markdown.
-  -h, --help       Show this help.`
+  -h, --help       Show this help.
+
+install-skill copies the Claude Code skill to .claude/skills/doc-review in the
+current directory. Then type /doc-review in Claude Code.
+
+  --global         Copy it to ~/.claude/skills/doc-review, for all projects.
+  --force          Replace a skill that is different from this version.`
+
+// dist/node/cli.js -> skills/doc-review in the package root.
+const SKILL_DIR = fileURLToPath(new URL('../../skills/doc-review/', import.meta.url))
+
+function installSkill(global: boolean, force: boolean): void {
+  const src = path.join(SKILL_DIR, 'SKILL.md')
+  const destDir = path.join(global ? os.homedir() : process.cwd(), '.claude', 'skills', 'doc-review')
+  const dest = path.join(destDir, 'SKILL.md')
+  const text = fs.readFileSync(src, 'utf8')
+  if (fs.existsSync(dest)) {
+    if (fs.readFileSync(dest, 'utf8') === text) {
+      console.error(`doc-review: the skill in ${destDir} is up to date.`)
+      return
+    }
+    if (!force) {
+      console.error(`doc-review: ${dest} exists and is different. Run again with --force to replace it.`)
+      process.exit(1)
+    }
+  }
+  fs.mkdirSync(destDir, { recursive: true })
+  fs.writeFileSync(dest, text)
+  console.error(`doc-review: installed the skill in ${destDir}. Type /doc-review in Claude Code.`)
+}
 
 function findRoot(arg: string | undefined): string {
   if (arg) return path.resolve(arg)
@@ -40,6 +74,8 @@ async function main(): Promise<void> {
       host: { type: 'string' },
       'no-open': { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
+      global: { type: 'boolean', default: false },
+      force: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false }
     }
   })
@@ -47,6 +83,7 @@ async function main(): Promise<void> {
     console.log(USAGE)
     return
   }
+  if (positionals[0] === 'install-skill') return installSkill(values.global, values.force)
   const root = findRoot(positionals[0])
   if (!fs.existsSync(path.join(root, '.vitepress'))) {
     console.error(`doc-review: ${root} has no .vitepress directory. Give the docs directory as the first argument.`)

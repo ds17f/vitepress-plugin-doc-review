@@ -38,8 +38,10 @@ The plugin has no other runtime dependencies.
 Install the package as a development dependency:
 
 ```sh
-npm install --save-dev vitepress-plugin-doc-review
+npm install --save-dev github:ds17f/vitepress-plugin-doc-review
 ```
+
+The package is not on the npm registry. npm gets it from GitHub and builds it.
 
 ## Add the plugin to a site
 
@@ -169,18 +171,28 @@ The markdown output has one section for each comment, in file and line order.
 Each heading is `path:line` or `path:start-end`. Each path is relative to the
 git root. The line numbers are the lines in the .md file.
 
-The options are `--port <n>`, `--host <host>`, `--no-open`, and `--json`.
+The options are `--port <n>`, `--host <host>`, `--no-open`, and `--json`. Run
+`npx doc-review --help` to see all of the options.
 
 ### Use it in Claude Code
 
-The package has a Claude Code skill in `skills/doc-review/SKILL.md`:
+The package has a Claude Code skill. Install the skill one time:
 
-1. Copy the `skills/doc-review` directory to `.claude/skills/` in your
-   project, or to `~/.claude/skills/`.
-2. In Claude Code, type `/doc-review`.
+```sh
+npx doc-review install-skill            # for this project: .claude/skills/doc-review
+npx doc-review install-skill --global   # for all projects: ~/.claude/skills/doc-review
+```
 
-The skill runs `npx doc-review` and waits for the review. Then the agent does
-the changes in the .md files.
+Then type `/doc-review` in Claude Code. To give the docs directory, type
+`/doc-review docs`. The skill runs `doc-review` and waits for the review. Then
+the agent does the changes in the .md files.
+
+If you install a new version of the plugin, run `install-skill` again. If your
+copy of the skill is different, add `--force` to replace it.
+
+A global skill works only in a project that has the plugin installed. In
+other projects, the skill tells you to install the plugin. It does not get a
+package from the npm registry.
 
 ## Limits
 
