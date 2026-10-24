@@ -21,7 +21,7 @@
     "skills"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node -e \"require('fs').chmodSync('dist/node/cli.js', 0o755)\"",
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run --exclude test/build.test.ts",
