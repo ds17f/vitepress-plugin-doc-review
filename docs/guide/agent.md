@@ -58,7 +58,9 @@ server stops. The pending comments stay in the browser as a draft.
 ## Use the review in Claude Code
 
 The package has a Claude Code skill. The skill runs `doc-review`, waits for
-the review, and then does the changes.
+the review, and then does the changes. The plugin can be in a subdirectory of
+the project, for example `docs/`. The skill finds the command in
+`node_modules/.bin`.
 
 1. Install the plugin and add it to the site. See
    [Getting started](./getting-started).
