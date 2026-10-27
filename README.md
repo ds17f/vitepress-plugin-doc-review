@@ -74,6 +74,7 @@ its own `enhanceApp`, you can call `enhanceAppWithReview(ctx)` in it instead.
 | --- | --- | --- | --- |
 | `enabled` | `boolean` | `true` | Set to `false` to turn off the plugin. |
 | `dryRun` | `boolean` | `false` | Write the review payload in the dev server terminal. Do not send it to GitHub. |
+| `base` | `string` | PR base or default branch | Base branch or commit for the Changes tab. Can be overridden in the panel. |
 | `repo` | `string` | Detected with `gh repo view` | The GitHub repository as `owner/name`. |
 
 ## How it works
@@ -108,6 +109,9 @@ The review UI is a Vue app. It shows:
 - A **Review** button at the bottom right. It opens the pending review panel.
   In the panel, you can edit or delete each comment, write a summary, and
   select **Comment**, **Approve**, or **Request changes**.
+- A **Changes** tab with branch commits, a selectable comparison start,
+  grouped changes, page navigation, and expandable source diffs. Comparisons
+  end at the current files and include uncommitted Markdown changes.
 - A gray bar on the left of each block that is not in the PR diff.
 - An **Issue title** box in place of the review types, if the branch has no
   open PR.
@@ -121,12 +125,14 @@ contain it.
 
 ### 3. The server endpoints
 
-A Vite plugin with `apply: 'serve'` adds 2 endpoints to the dev server:
+A Vite plugin with `apply: 'serve'` adds endpoints to the dev server:
 
 - `GET /__review/pr` gets the PR of the current branch with `gh pr view`. It
   gets the lines that you can comment on from the patches in
   `gh api repos/{owner}/{repo}/pulls/{n}/files`. It also does the local
   checks.
+- `GET /__review/changes` gets the branch commits and changed Markdown regions
+  from local Git. It keeps actual edits separate from commentable PR context.
 - `POST /__review/submit` does the checks again. Then it sends the review to
   `repos/{owner}/{repo}/pulls/{n}/reviews` with `gh api`. If the branch has no
   open PR, it sends an issue to `repos/{owner}/{repo}/issues`.

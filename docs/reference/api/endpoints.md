@@ -9,6 +9,28 @@ The endpoints exist only on the dev server. Each request must have the
 `X-Doc-Review: 1` header. Read [Security](../../guide/security.md) for all of
 the request checks.
 
+## GET /__review/changes
+
+Gets branch commits and Markdown changes under the docs source directory.
+Optional query parameters:
+
+- `base`: a locally available Git branch or commit. Defaults to the `base`
+  option, then the detected PR base or default branch.
+- `from`: the full SHA of the merge base or a commit listed in the response.
+  Defaults to the merge base. An obsolete or unrelated SHA returns an error.
+
+The response includes `baseRef`, `base`, `head`, `from`, `commits`, `files`,
+and `error`. Commits contain `sha` and `subject`, oldest first. Each file
+contains its repository-relative `path`, nullable page route, `kind`, and
+`regions`. A region contains a label, navigation lines, actual added-line
+ranges, and a source patch. Context lines are excluded from the added-line
+ranges. Deleted pages have no route. Comparison failures set `error` and
+return an empty file list, rather than implying that no changes exist.
+
+The endpoint compares the selected commit with the working files, including
+staged, unstaged, and untracked changes. It does not modify the checkout.
+Agent mode uses only local Git commands.
+
 ## GET /__review/pr
 
 Gets the PR of the current branch and the lines that you can comment on.

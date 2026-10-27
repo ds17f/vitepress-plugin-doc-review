@@ -31,6 +31,11 @@ function findChrome() {
   throw new Error('No Chromium found. Set CHROME_PATH.')
 }
 
+// A temporary page exercises added-page navigation without editing the fixtures.
+const changePage = path.join(REPO, 'docs/review-changes-e2e.md')
+fs.writeFileSync(changePage, '# Change navigation test\n\nA new page for the changes browser.\n', { flag: 'wx' })
+process.on('exit', () => fs.rmSync(changePage, { force: true }))
+
 // Start the dev server in dry-run mode and collect its output.
 let serverLog = ''
 const server = spawn(process.execPath, [path.join(REPO, 'node_modules/vitepress/bin/vitepress.js'), 'dev', 'docs', '--port', String(PORT), '--strictPort'], {
@@ -164,6 +169,23 @@ const PL = 'docs/testing/playground.md'
 
 await open('/testing/playground')
 await evaluate('localStorage.clear()')
+await open('/testing/playground')
+
+// Changes comparison, commit selection, expanded diff and cross-page navigation.
+await evaluate(`document.querySelector('.dr-toggle').click()`)
+await evaluate(`[...document.querySelectorAll('.dr-tabs button')].find(b => b.textContent === 'Changes').click()`)
+await waitFor(`!!document.querySelector('#dr-base')`)
+await waitFor(`!document.querySelector('.dr-changes [role="status"]') || !document.querySelector('.dr-changes').textContent.includes('Loading changes…')`, 15000)
+await evaluate(`(() => { const input = document.querySelector('#dr-base'); input.value = 'HEAD~1'; input.dispatchEvent(new Event('input')); document.querySelector('.dr-base-form').requestSubmit() })()`)
+await waitFor(`!!document.querySelector('.dr-commits') && !document.querySelector('.dr-changes').textContent.includes('Loading changes…')`, 15000)
+await evaluate(`document.querySelector('.dr-commits').open = true`)
+await evaluate(`[...document.querySelectorAll('.dr-commit')].find(b => b.textContent.includes('HEAD')).click()`)
+await waitFor(`!!document.querySelector('.dr-commits') && document.querySelector('.dr-commits summary').textContent.includes('→ current files') && !document.querySelector('.dr-changes').textContent.includes('Loading changes…')`, 15000)
+await evaluate(`(() => { const group = [...document.querySelectorAll('.dr-change-path')].find(h => h.textContent === 'docs/review-changes-e2e.md').parentElement; group.querySelector('details').open = true; group.querySelector('.dr-link').click() })()`)
+await waitFor(`!!document.querySelector('[data-source-file="docs/review-changes-e2e.md"].dr-changed.dr-flash')`)
+const changeDiff = await evaluate(`document.querySelector('.dr-changes').textContent.includes('+# Change navigation test')`)
+if (!changeDiff) throw new Error('The Changes tab did not show the added-page source diff.')
+console.log('PASS changes: select starting commit, expand diff, navigate to added page, highlight edits')
 await open('/testing/playground')
 
 // The playground has 11 lines of frontmatter.
