@@ -10,6 +10,10 @@ export interface ContextOptions {
   /** `owner/name`. Detected with `gh` when not set. */
   repo?: string
   dryRun: boolean
+  /** Base branch or commit used for change navigation. */
+  base?: string
+  /** Repository-relative source file to VitePress route. */
+  pages?: Record<string, string>
   /** The `doc-review` command started the server: the submit goes to the agent, not to GitHub. */
   agent?: boolean
 }

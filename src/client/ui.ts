@@ -1,11 +1,11 @@
 import { computed, createApp, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, watch, type VNode } from 'vue'
 import type { Router } from 'vitepress'
-import { dismissReview, fetchStatus, submitReview } from './api.js'
+import { dismissReview, fetchChanges, fetchStatus, submitReview } from './api.js'
 import { emptyDraft, loadDraft, saveDraft } from './draft.js'
 import { BLOCK_SELECTOR, blocksForRange, targetFromSelection, type SelectionTarget } from './selection.js'
 import { css } from './style.js'
 import { rangeTouchesDiff } from '../shared/lines.js'
-import type { DraftComment, PrStatus, ReviewEvent, SubmitResponse } from '../shared/types.js'
+import type { ChangeRegion, ChangedFile, ChangesStatus, DraftComment, PrStatus, ReviewEvent, SubmitResponse } from '../shared/types.js'
 
 const ROOT_ID = 'doc-review-root'
 
@@ -48,6 +48,13 @@ const ReviewApp = defineComponent({
       sel: null as null | { target: SelectionTarget | null; top: number; left: number; unreliable: boolean },
       composer: null as Composer | null,
       panelOpen: false,
+      tab: 'comments' as 'comments' | 'changes',
+      changes: null as ChangesStatus | null,
+      changesLoading: false,
+      changesError: '',
+      baseInput: '',
+      jumpNote: '',
+      activeChange: -1,
       editing: null as null | { id: string; text: string },
       submitting: false,
       result: null as SubmitResponse | null
@@ -96,6 +103,8 @@ const ReviewApp = defineComponent({
           const leaf = isLeaf(el)
           const outside = leaf && !!state.status && !inDiff(path, s, e)
           el.classList.toggle('dr-not-commentable', outside)
+          const changed = leaf && !!state.changes?.files.find((f) => f.path === path)?.regions.some((r) => r.ranges.some((range) => range.start <= e && range.end >= s))
+          el.classList.toggle('dr-changed', changed)
           if (outside) el.title = 'Not in the PR diff. A comment here goes in the review body.'
           else if (el.title.startsWith('Not in the PR diff')) el.removeAttribute('title')
           const has = leaf && draft.comments.some((c) => c.path === path && (c.startLine ?? c.line) <= e && c.line >= s)
@@ -104,6 +113,73 @@ const ReviewApp = defineComponent({
       })
     }
     watch(() => draft.comments.map((c) => `${c.path}:${c.startLine}:${c.line}`).join(), mark)
+
+    // ----- Changes ----------------------------------------------------------
+
+    let changesRequest = 0
+    const changeStops = computed(() => (state.changes?.files ?? []).flatMap((file) => file.regions.map((region) => ({ file, region }))))
+
+    async function reloadChanges(from = '') {
+      const request = ++changesRequest
+      state.changesLoading = true
+      state.changesError = ''
+      state.jumpNote = ''
+      // Do not leave highlights from the previous comparison on the page.
+      state.changes = null
+      state.activeChange = -1
+      mark()
+      try {
+        const data = await fetchChanges(state.baseInput.trim(), from)
+        if (request !== changesRequest) return
+        state.changes = data
+        state.baseInput = data.baseRef
+      } catch (e) {
+        if (request === changesRequest) state.changesError = (e as Error).message
+      } finally {
+        if (request === changesRequest) {
+          state.changesLoading = false
+          mark()
+        }
+      }
+    }
+
+    function setTab(tab: 'changes' | 'comments') {
+      state.tab = tab
+      if (tab === 'changes' && !state.changes && !state.changesLoading) reloadChanges()
+    }
+
+    async function goToChange(file: ChangedFile, region: ChangeRegion) {
+      state.jumpNote = ''
+      state.activeChange = changeStops.value.findIndex((s) => s.file === file && s.region === region)
+      if (!file.page) {
+        state.jumpNote = file.kind === 'deleted' ? 'This page was deleted. Expand its source diff below.' : 'This source file has no page route. Expand its source diff below.'
+        return
+      }
+      try {
+        await props.router.go(file.page)
+        await nextTick()
+        const candidates = Array.from(document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)).filter((el) => el.getAttribute('data-source-file') === file.path && isLeaf(el))
+        const exact = candidates.filter((el) => Number(el.getAttribute('data-source-line')) <= region.end && Number(el.getAttribute('data-source-end')) >= region.line)
+        // Removed text has no block of its own. Use the nearest surviving block.
+        const targets = exact.length ? exact : region.kind === 'removed' ? candidates.sort((a, b) => Math.abs(Number(a.getAttribute('data-source-line')) - region.line) - Math.abs(Number(b.getAttribute('data-source-line')) - region.line)).slice(0, 1) : []
+        if (!targets.length) {
+          state.jumpNote = 'This change has no mapped content on the page. Expand its source diff below.'
+          return
+        }
+        targets[0].scrollIntoView({ behavior: 'smooth', block: 'center' })
+        targets.forEach((el) => el.classList.add('dr-flash'))
+        setTimeout(() => targets.forEach((el) => el.classList.remove('dr-flash')), 1200)
+        if (region.kind === 'removed') state.jumpNote = 'Removed content: showing the nearest surviving location. Expand the source diff to see what was deleted.'
+      } catch (e) {
+        state.jumpNote = `Cannot open this page: ${(e as Error).message}`
+      }
+    }
+
+    function stepChange(delta: number) {
+      const index = state.activeChange < 0 ? delta > 0 ? 0 : changeStops.value.length - 1 : state.activeChange + delta
+      const stop = changeStops.value[index]
+      if (stop) goToChange(stop.file, stop.region)
+    }
 
     // ----- Selection --------------------------------------------------------
 
@@ -447,6 +523,56 @@ const ReviewApp = defineComponent({
       return note('tip', [h('span', `Review submitted.${outside} `), r.url ? h('a', { href: r.url, target: '_blank', rel: 'noreferrer' }, 'Open on GitHub') : null].filter(Boolean) as VNode[])
     }
 
+    function renderChanges() {
+      const data = state.changes
+      const selected = data?.from
+      const commits = data ? [{ sha: data.base, subject: 'Branch starting point' }, ...data.commits] : []
+      return h('div', { class: 'dr-changes' }, [
+        h('form', { class: 'dr-base-form', onSubmit: (e: Event) => { e.preventDefault(); reloadChanges() } }, [
+          h('label', { for: 'dr-base' }, 'Base branch or commit'),
+          h('div', { class: 'dr-row' }, [
+            h('input', { id: 'dr-base', class: 'dr-input', placeholder: 'Auto-detect, or enter a Git ref', value: state.baseInput, onInput: (e: Event) => { state.baseInput = (e.target as HTMLInputElement).value } }),
+            h('button', { class: 'dr-btn', type: 'submit', disabled: state.changesLoading }, 'Compare')
+          ])
+        ]),
+        h('p', { class: 'dr-muted' }, 'Choose a starting point. Each comparison ends at your current files, including uncommitted changes.'),
+        state.changesLoading ? h('div', { role: 'status' }, 'Loading changes…') : null,
+        state.changesError || data?.error ? note('warning', state.changesError || data!.error!) : null,
+        data && !data.error ? h('div', [
+          h('details', { class: 'dr-commits' }, [
+            h('summary', `From ${selected === data.base ? 'branch starting point' : selected?.slice(0, 7)} → current files`),
+            h('p', { class: 'dr-muted' }, `Starting point: merge base with ${data.baseRef}. Selecting a commit shows edits made after that commit.`),
+            ...commits.map((commit) => h('button', {
+              class: ['dr-commit', { selected: selected === commit.sha }],
+              'aria-pressed': selected === commit.sha,
+              onClick: () => reloadChanges(commit.sha)
+            }, [
+              h('span', { class: 'dr-loc' }, `${commit.sha.slice(0, 7)}${commit.sha === data.head ? ' · HEAD' : ''}`),
+              h('span', commit.subject)
+            ]))
+          ]),
+          h('div', { class: 'dr-row' }, [
+            h('span', { class: 'dr-muted' }, `${changeStops.value.length} changes · ${data.files.length} files`),
+            h('button', { class: 'dr-btn', disabled: !changeStops.value.length || state.activeChange === 0, onClick: () => stepChange(-1) }, 'Previous'),
+            h('button', { class: 'dr-btn', disabled: !changeStops.value.length || state.activeChange === changeStops.value.length - 1, onClick: () => stepChange(1) }, 'Next')
+          ]),
+          state.jumpNote ? h('div', { role: 'status', class: 'dr-note' }, state.jumpNote) : null,
+          !data.files.length ? h('p', { class: 'dr-muted' }, 'No Markdown changes in this comparison.') : null,
+          ...data.files.map((file) => h('div', { key: file.path }, [
+            h('h4', { class: 'dr-change-path' }, file.path),
+            ...file.regions.map((region, i) => h('div', { class: ['dr-item', { 'dr-active-change': changeStops.value[state.activeChange]?.region === region }], key: `${file.path}:${i}` }, [
+              h('button', { class: 'dr-link', onClick: () => goToChange(file, region) }, `${region.kind === 'added' ? 'Added' : region.kind === 'removed' ? 'Removed' : 'Updated'} · ${region.label}`),
+              h('details', [
+                h('summary', 'View source diff'),
+                h('pre', { class: 'dr-pre', tabindex: 0, 'aria-label': `Source diff for ${file.path}` }, region.patch.split('\n').map((line) => h('span', { class: line.startsWith('+') ? 'dr-diff-add' : line.startsWith('-') ? 'dr-diff-remove' : '' }, `${line}\n`)))
+              ])
+            ]))
+          ])),
+          h('p', { class: 'dr-muted' }, 'Use Compare to refresh after editing files. Renamed pages appear as a deletion and an addition.')
+        ]) : null
+      ])
+    }
+
     function renderPanel() {
       if (!state.panelOpen) return null
       const byPath = new Map<string, DraftComment[]>()
@@ -460,54 +586,60 @@ const ReviewApp = defineComponent({
           agentMode.value ? null : h('button', { class: 'dr-link', onClick: refresh, disabled: state.loading }, state.loading ? 'Loading…' : 'Reload PR')
         ]),
         ...renderStatus(),
-        h('h4', `Comments (${draft.comments.length})`),
-        draft.comments.length
-          ? h('div', [...byPath.values()].flat().map(renderComment))
-          : h('div', { class: 'dr-muted' }, 'Select text in the page, then click "Comment".'),
-        issueMode.value ? h('h4', 'Issue title') : null,
-        issueMode.value
-          ? h('input', {
-              class: 'dr-input',
-              value: draft.title,
-              placeholder: `Docs review: ${state.status?.branch ?? 'detached HEAD'}`,
-              onInput: (e: Event) => (draft.title = (e.target as HTMLInputElement).value)
-            })
-          : null,
-        h('h4', 'Summary'),
-        h('textarea', {
-          value: draft.summary,
-          placeholder: issueMode.value || agentMode.value ? 'Leave a summary (optional)' : 'Leave a summary (optional for Comment and Approve)',
-          onInput: (e: Event) => (draft.summary = (e.target as HTMLTextAreaElement).value)
-        }),
-        issueMode.value || agentMode.value
-          ? null
-          : h(
-              'div',
-              { class: 'dr-events', role: 'radiogroup' },
-              EVENTS.map((ev) =>
-                h('label', { title: ev.hint }, [
-                  h('input', { type: 'radio', name: 'dr-event', value: ev.value, checked: draft.event === ev.value, onChange: () => (draft.event = ev.value) }),
-                  ev.label
-                ])
-              )
-            ),
-        blocked && state.status ? h('div', { class: 'dr-muted' }, blocked) : null,
-        h('div', { class: 'dr-row' }, [
-          h('button', { class: 'dr-btn danger', disabled: !draft.comments.length && !draft.summary, onClick: discardAll }, 'Discard'),
-          agentMode.value
-            ? h('button', { class: 'dr-btn', disabled: state.submitting, title: 'Stop the review. The agent gets no feedback.', onClick: dismiss }, 'Close without feedback')
-            : null,
-          h(
-            'button',
-            { class: 'dr-btn primary', disabled: !!blocked || state.submitting, onClick: submit },
-            state.submitting
-              ? 'Submitting…'
-              : agentMode.value
-                ? hasContent.value ? 'Send to agent' : 'Approve'
-                : `${issueMode.value ? 'Open issue' : 'Submit review'}${state.status?.dryRun ? ' (dry run)' : ''}`
-          )
+        h('div', { class: 'dr-tabs', role: 'group', 'aria-label': 'Review panel view' }, [
+          h('button', { class: 'dr-btn', 'aria-pressed': state.tab === 'changes', onClick: () => setTab('changes') }, 'Changes'),
+          h('button', { class: 'dr-btn', 'aria-pressed': state.tab === 'comments', onClick: () => setTab('comments') }, `Comments (${draft.comments.length})`)
         ]),
-        renderResult()
+        ...(state.tab === 'changes' ? [renderChanges()] : [
+          h('h4', `Comments (${draft.comments.length})`),
+          draft.comments.length
+            ? h('div', [...byPath.values()].flat().map(renderComment))
+            : h('div', { class: 'dr-muted' }, 'Select text in the page, then click "Comment".'),
+          issueMode.value ? h('h4', 'Issue title') : null,
+          issueMode.value
+            ? h('input', {
+                class: 'dr-input',
+                value: draft.title,
+                placeholder: `Docs review: ${state.status?.branch ?? 'detached HEAD'}`,
+                onInput: (e: Event) => (draft.title = (e.target as HTMLInputElement).value)
+              })
+            : null,
+          h('h4', 'Summary'),
+          h('textarea', {
+            value: draft.summary,
+            placeholder: issueMode.value || agentMode.value ? 'Leave a summary (optional)' : 'Leave a summary (optional for Comment and Approve)',
+            onInput: (e: Event) => (draft.summary = (e.target as HTMLTextAreaElement).value)
+          }),
+          issueMode.value || agentMode.value
+            ? null
+            : h(
+                'div',
+                { class: 'dr-events', role: 'radiogroup' },
+                EVENTS.map((ev) =>
+                  h('label', { title: ev.hint }, [
+                    h('input', { type: 'radio', name: 'dr-event', value: ev.value, checked: draft.event === ev.value, onChange: () => (draft.event = ev.value) }),
+                    ev.label
+                  ])
+                )
+              ),
+          blocked && state.status ? h('div', { class: 'dr-muted' }, blocked) : null,
+          h('div', { class: 'dr-row' }, [
+            h('button', { class: 'dr-btn danger', disabled: !draft.comments.length && !draft.summary, onClick: discardAll }, 'Discard'),
+            agentMode.value
+              ? h('button', { class: 'dr-btn', disabled: state.submitting, title: 'Stop the review. The agent gets no feedback.', onClick: dismiss }, 'Close without feedback')
+              : null,
+            h(
+              'button',
+              { class: 'dr-btn primary', disabled: !!blocked || state.submitting, onClick: submit },
+              state.submitting
+                ? 'Submitting…'
+                : agentMode.value
+                  ? hasContent.value ? 'Send to agent' : 'Approve'
+                  : `${issueMode.value ? 'Open issue' : 'Submit review'}${state.status?.dryRun ? ' (dry run)' : ''}`
+            )
+          ]),
+          renderResult()
+        ])
       ])
     }
 

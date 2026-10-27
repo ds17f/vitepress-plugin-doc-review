@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { ViteDevServer } from 'vite'
+import { loadChanges } from './changes.js'
 import { agentSink } from './agent.js'
 import { buildAgentFeedback, buildIssuePayload, DISMISSED_TEXT, buildReviewPayload, ReviewInputError } from './payload.js'
 import { loadContext, postIssue, postReview, type ContextOptions, type ReviewContext } from './github.js'
@@ -120,6 +121,10 @@ export function installReviewMiddleware(server: ViteDevServer, opts: MiddlewareO
     }
     const url = (req.url ?? '/').split('?')[0]
     try {
+      if (req.method === 'GET' && url === '/changes') {
+        const params = new URL(req.url ?? '/', 'http://localhost').searchParams
+        return send(res, 200, await loadChanges(opts.context(), { base: params.get('base') ?? undefined, from: params.get('from') ?? undefined }))
+      }
       if (req.method === 'GET' && url === '/pr') {
         const { commitId: _commitId, ...status } = await loadContext(opts.context())
         return send(res, 200, status)

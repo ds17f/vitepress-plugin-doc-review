@@ -1,4 +1,4 @@
-import type { PrStatus, SubmitRequest, SubmitResponse } from '../shared/types.js'
+import type { ChangesStatus, PrStatus, SubmitRequest, SubmitResponse } from '../shared/types.js'
 
 const HEADERS = { 'X-Doc-Review': '1' }
 
@@ -34,4 +34,14 @@ export async function submitReview(req: SubmitRequest): Promise<SubmitResponse> 
   } catch {
     return { ok: false, error: { code: 'http', message: `HTTP ${res.status}` } }
   }
+}
+
+export async function fetchChanges(base = '', from = ''): Promise<ChangesStatus> {
+  const params = new URLSearchParams()
+  if (base) params.set('base', base)
+  if (from) params.set('from', from)
+  const res = await fetch(`/__review/changes?${params}`, { headers: HEADERS, cache: 'no-store' })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data?.error?.message ?? `HTTP ${res.status}`)
+  return data as ChangesStatus
 }

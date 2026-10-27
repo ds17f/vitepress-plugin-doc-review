@@ -5,6 +5,34 @@ description: The steps to write and submit a review.
 
 # Do a review
 
+## Find changed content
+
+1. Click **Review**, then **Changes**.
+2. Check **Base branch or commit**. The plugin uses the open PR's base branch
+   when available. Otherwise it uses `origin/HEAD`, `main`, or `master`.
+   You can enter another Git ref and click **Compare**.
+3. Expand the **From … → current files** selector. It lists commits from the
+   merge base, oldest first. Select **Branch starting point** for the entire
+   branch, or select a commit for changes made after that commit.
+4. Click a change to open its page and highlight the affected content.
+   Use **Previous** and **Next** to move through the changes.
+5. Expand **View source diff** to see additions and deletions.
+
+Each comparison ends at your current files, including staged, unstaged, and
+untracked Markdown files. Selecting HEAD shows only uncommitted changes.
+Use **Compare** to refresh after you edit files. The selector does not check
+out commits or change your files.
+
+A blue bar marks blocks with added or updated source lines. Deleted content
+has no current block: its entry opens the nearest surviving location when
+possible. Deleted pages remain in the list with a source diff. Metadata,
+excluded files, includes, and generated content may have no mapped location;
+use the source diff for those changes. Renames appear as a deletion and an
+addition.
+
+Change navigation is separate from GitHub comment placement. Choosing a
+starting commit does not change which PR lines can receive inline comments.
+
 ## Write comments
 
 1. Open a page on the dev server.
@@ -25,6 +53,7 @@ more blocks gives a comment on a range of lines.
 | Mark | Meaning |
 | --- | --- |
 | Gray bar on the left | The block is not in the PR diff. A comment on it goes in the review body. |
+| Blue bar on the left | The block contains changed lines in the selected comparison. |
 | Yellow background | The block has a comment in the pending review. |
 
 ## Edit the pending review

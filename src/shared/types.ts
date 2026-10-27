@@ -130,3 +130,31 @@ export interface SubmitResponse {
   dismissed?: boolean
   error?: { code: string; message: string }
 }
+
+/** Navigation and source diff data, independent of GitHub comment placement. */
+export interface ChangeRegion {
+  line: number
+  end: number
+  label: string
+  kind: 'added' | 'removed' | 'updated'
+  /** Actual new-side edits, excluding unchanged diff context. */
+  ranges: Hunk[]
+  patch: string
+}
+
+export interface ChangedFile {
+  path: string
+  page: string | null
+  kind: 'new' | 'deleted' | 'modified'
+  regions: ChangeRegion[]
+}
+
+export interface ChangesStatus {
+  baseRef: string
+  base: string
+  head: string
+  from: string
+  commits: { sha: string; subject: string }[]
+  files: ChangedFile[]
+  error: string | null
+}

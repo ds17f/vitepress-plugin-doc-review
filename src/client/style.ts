@@ -3,6 +3,10 @@ export const css = /* css */ `
 .dr-not-commentable {
   box-shadow: -3px 0 0 0 var(--vp-c-text-3);
 }
+.dr-changed {
+  border-left: 3px solid var(--vp-c-brand-1);
+  padding-left: 8px;
+}
 .dr-has-comment {
   background-color: var(--vp-c-yellow-soft);
   box-shadow: -3px 0 0 0 var(--vp-c-yellow-1);
@@ -157,5 +161,19 @@ export const css = /* css */ `
   font-size: 12px;
   white-space: pre;
 }
+.dr-tabs { display: flex; gap: 8px; margin: 12px 0; }
+.dr-tabs [aria-pressed="true"] { border-color: var(--vp-c-brand-1); color: var(--vp-c-brand-1); }
+.dr-base-form label { font-weight: 500; }
+.dr-base-form .dr-row { margin-top: 4px; }
+.dr-base-form .dr-input { min-width: 0; }
+.dr-changes p { margin: 8px 0; }
+.dr-changes summary { cursor: pointer; font-size: 13px; margin-top: 6px; }
+.dr-commits { margin: 12px 0; }
+.dr-commit { display: flex; flex-direction: column; width: 100%; gap: 2px; text-align: left; padding: 8px; border: 1px solid var(--vp-c-divider); background: var(--vp-c-bg); color: inherit; }
+.dr-commit.selected { border-color: var(--vp-c-brand-1); background: var(--vp-c-brand-soft); }
+.dr-change-path { overflow-wrap: anywhere; }
+.dr-active-change { border-color: var(--vp-c-brand-1); }
+.dr-diff-add { background: var(--vp-c-green-soft); }
+.dr-diff-remove { background: var(--vp-c-red-soft); }
 .dr-muted { color: var(--vp-c-text-2); font-size: 13px; }
 `

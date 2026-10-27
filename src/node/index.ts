@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import path from 'node:path'
+import type { SiteConfig } from 'vitepress'
 import type { Plugin, ResolvedConfig } from 'vite'
 import type { UserConfig } from 'vitepress'
 import { docReviewMarkdown } from './markdown.js'
@@ -18,6 +20,8 @@ const PKG = 'vitepress-plugin-doc-review'
 export interface DocReviewOptions {
   /** Turn the plugin on or off. Default: true. */
   enabled?: boolean
+  /** Base branch or commit for change navigation. Default: PR base or the default branch. */
+  base?: string
   /** Log the review payload in the dev server terminal and do not send it to GitHub. Default: false. */
   dryRun?: boolean
   /** GitHub repository as `owner/name`. Default: detect it with `gh repo view`. */
@@ -28,6 +32,7 @@ interface State {
   serve: boolean
   gitRoot: string | null
   srcDir: string
+  site?: SiteConfig
 }
 
 function findGitRoot(dir: string): string | null {
@@ -51,7 +56,8 @@ function reviewVitePlugin(state: State, options: DocReviewOptions): Plugin {
     },
     configResolved(config: ResolvedConfig) {
       // VitePress puts its resolved site config on the Vite config.
-      const site = (config as ResolvedConfig & { vitepress?: { srcDir: string } }).vitepress
+      const site = (config as ResolvedConfig & { vitepress?: SiteConfig }).vitepress
+      state.site = site
       state.srcDir = site?.srcDir ?? config.root
       state.gitRoot = findGitRoot(state.srcDir)
       if (!state.gitRoot) log('the docs are not in a git repository. Comments cannot be placed.')
@@ -63,6 +69,12 @@ function reviewVitePlugin(state: State, options: DocReviewOptions): Plugin {
           gitRoot: state.gitRoot,
           srcDir: state.srcDir,
           repo: options.repo,
+          base: options.base,
+          pages: Object.fromEntries((state.gitRoot ? state.site?.pages ?? [] : []).map((file) => {
+            const site = state.site!
+            const route = (site.rewrites.map[file] ?? file).replace(/\.md$/, site.cleanUrls ? '' : '.html').replace(/(^|\/)index(?:\.html)?$/, '$1')
+            return [path.relative(state.gitRoot!, path.join(state.srcDir, file)).split(path.sep).join('/'), site.site.base + route.split('/').map(encodeURIComponent).join('/')]
+          })),
           dryRun: !!options.dryRun,
           agent: !!agentSink()
         })

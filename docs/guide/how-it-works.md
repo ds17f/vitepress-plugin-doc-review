@@ -69,7 +69,7 @@ theme and in the dark theme.
 ## The server endpoints
 
 The Vite plugin uses `apply: 'serve'`, so it runs only with the dev server. It
-adds 2 endpoints under `/__review/`. Read [Endpoints](../reference/api/endpoints.md)
+adds endpoints under `/__review/`. Read [Endpoints](../reference/api/endpoints.md)
 for the request and response data.
 
 ### The commentable lines

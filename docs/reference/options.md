@@ -50,3 +50,20 @@ withReview(config, { dryRun: !!process.env.DOC_REVIEW_DRY_RUN })
 
 The GitHub repository as `owner/name`. Use this option if `gh` cannot find the
 correct repository, for example in a fork.
+
+## base
+
+- Type: `string`
+- Default: the open PR's base branch, or `origin/HEAD`, `main`, or `master`
+
+The base branch or commit for the Changes tab. The comparison starts at its
+merge base with HEAD and ends at your current files. For example:
+
+```ts
+withReview(config, { base: 'origin/develop' })
+```
+
+You can override this value in the panel. The setting does not change the
+GitHub review target or comment placement. Git refs must be available locally;
+the plugin does not fetch branches. Agent mode detects the base from local
+Git refs and does not use `gh`.
